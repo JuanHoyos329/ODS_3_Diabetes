@@ -4,19 +4,15 @@ import mysql.connector
 from mysql.connector import Error
 import pandas as pd
 
-# Agregar carpeta src al path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-# Importar módulos ETL
 from extraction import load_raw_data
 from transform import full_transformation_pipeline
-from dimensional_etl import create_dimensional_model_from_dataframe
+from dimensional_etl import dimensional_model
 from load import MySQLLoader
 from config import DB_CONFIG
 
-
 def test_mysql_connection():
-    """Prueba conexión básica a MySQL sin base de datos específica"""
     try:
         basic_config = {
             'host': DB_CONFIG['host'],
@@ -41,14 +37,11 @@ def test_mysql_connection():
         print(f"MySQL connection test failed: {str(e)}")
         return False
 
-
 def connect_to_database():
-    """Crea la base de datos si no existe y conecta"""
     try:
         temp_config = DB_CONFIG.copy()
         database_name = temp_config.pop('database')
-        
-        # Crear DB si no existe
+
         temp_connection = mysql.connector.connect(**temp_config)
         temp_cursor = temp_connection.cursor()
         temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
@@ -68,12 +61,10 @@ def main():
     print("=" * 60)
 
     try:
-        # Step 1: Data Extraction
         print("\n[1] DATA EXTRACTION")
         df_raw = load_raw_data()
         print("Extraction completed")
         
-        # Step 2: Transformation
         print("\n[2] DATA TRANSFORMATION")
         df_clean = full_transformation_pipeline(df_raw)
         print("Transformation completed")
@@ -85,12 +76,10 @@ def main():
             percentage = (count / len(df_clean)) * 100
             print(f"  - {class_name}: {count:,} ({percentage:.1f}%)")
         
-        # Step 3: Dimensional Modeling
         print("\n[3] DIMENSIONAL MODELING")
-        tables = create_dimensional_model_from_dataframe(df_clean)
+        tables = dimensional_model(df_clean)
         print("Dimensional model created")
-        
-        # Step 4: DB Connection
+
         print("\n[4] DATABASE CONNECTION")
         if not test_mysql_connection():
             raise Exception("MySQL server connection failed")
@@ -112,7 +101,6 @@ def main():
         loader.load_dataframes_to_mysql(tables)
         print("Loading completed")
         
-        # Step 6: Summary
         print("\n" + "=" * 60)
         print("ETL PIPELINE COMPLETED SUCCESSFULLY!")
         print("=" * 60)

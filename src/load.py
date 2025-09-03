@@ -6,7 +6,7 @@ import sys
 import logging
 from datetime import datetime
 
-from utils import setup_logging, ensure_directory_exists
+
 sys.path.append('..')
 from config import DB_CONFIG, DB_TABLES
 

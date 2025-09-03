@@ -50,6 +50,5 @@ def ensure_directory_exists(directory_path: str) -> None:
     else:
         logging.debug(f"Directory already exists: {directory_path}")
 
-
 def get_timestamp_string() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")

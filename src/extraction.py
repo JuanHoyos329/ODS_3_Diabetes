@@ -3,17 +3,7 @@ import logging
 import os
 
 
-def extract_brfss_data(file_path: str, year: str = '2015') -> pd.DataFrame:
-    """
-    Extract raw BRFSS data from a CSV file.
-
-    Args:
-        file_path (str): Path to the CSV file.
-        year (str): Year of the dataset.
-
-    Returns:
-        pd.DataFrame: Extracted dataset.
-    """
+def extract_data(file_path: str, year: str = '2015') -> pd.DataFrame:
     try:
         df = pd.read_csv(file_path)
         logging.info(f"BRFSS {year} data extracted successfully")
@@ -24,10 +14,7 @@ def extract_brfss_data(file_path: str, year: str = '2015') -> pd.DataFrame:
 
 
 def select_diabetes_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Select diabetes-related features from BRFSS dataset.
-    Handles missing columns gracefully for different years.
-    """
+
     priority_columns = [
         "DIABETE3",  # Target variable
         "_RFHYPE5",  # High blood pressure
@@ -97,7 +84,7 @@ def load_raw_brfss_data(data_dir: str = "data/raw", year: str = "2015") -> pd.Da
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Raw BRFSS data not found: {file_path}")
 
-    df = extract_brfss_data(file_path, year)
+    df = extract_data(file_path, year)
     return select_diabetes_features(df)
 
 
@@ -130,7 +117,7 @@ def load_all_brfss_data(data_dir: str = "data/raw") -> pd.DataFrame:
     for file, year in zip(csv_files, years):
         file_path = os.path.join(data_dir, file)
         try:
-            df = extract_brfss_data(file_path, year)
+            df = extract_data(file_path, year)
             df_selected = select_diabetes_features(df)
             df_selected["DATA_YEAR"] = int(year)
 
@@ -157,16 +144,6 @@ def load_all_brfss_data(data_dir: str = "data/raw") -> pd.DataFrame:
 
 
 def load_raw_data(data_dir: str = "data/raw", load_all_years: bool = True) -> pd.DataFrame:
-    """
-    Load raw BRFSS data for processing.
-
-    Args:
-        data_dir (str): Directory containing raw CSV files.
-        load_all_years (bool): If True, loads all years. If False, loads only 2015.
-
-    Returns:
-        pd.DataFrame: Dataset ready for processing.
-    """
     return load_all_brfss_data(data_dir) if load_all_years else load_raw_brfss_data(
         data_dir, "2015"
     )

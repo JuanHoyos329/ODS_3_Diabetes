@@ -96,36 +96,36 @@ def save_dimensional_tables(output_dir: str, dim_demographics: pd.DataFrame,
         filepath = os.path.join(output_dir, filename)
         df.to_csv(filepath, index=False)
         logging.info(f"Saved {filename}: {len(df)} records")
-        print(f"✅ Saved {filename}")
+        print(f"Saved {filename}")
 
 def display_sample_data(dim_demographics: pd.DataFrame, dim_lifestyle: pd.DataFrame,
                        dim_medical_conditions: pd.DataFrame, dim_healthcare_access: pd.DataFrame,
                        fact_health_records: pd.DataFrame):
-    print(f"\n📊 Sample Data from Dimensional Tables:")
+    print(f"\nSample Data from Dimensional Tables:")
     
-    print(f"\n👥 Demographics (showing first 3 records):")
+    print(f"\nDemographics (showing first 3 records):")
     for _, row in dim_demographics.head(3).iterrows():
         print(f"     {dict(row)}")
     
-    print(f"\n🏃 Lifestyle (showing first 3 records):")
+    print(f"\nLifestyle (showing first 3 records):")
     for _, row in dim_lifestyle.head(3).iterrows():
         print(f"     {dict(row)}")
     
-    print(f"\n🏥 Medical Conditions (showing first 3 records):")
+    print(f"\nMedical Conditions (showing first 3 records):")
     for _, row in dim_medical_conditions.head(3).iterrows():
         print(f"     {dict(row)}")
     
-    print(f"\n🩺 Healthcare Access (showing first 3 records):")
+    print(f"\nHealthcare Access (showing first 3 records):")
     for _, row in dim_healthcare_access.head(3).iterrows():
         print(f"     {dict(row)}")
     
-    print(f"\n📈 Data Warehouse Summary:")
+    print(f"\nData Warehouse Summary:")
     print(f"   Total Fact Records: {len(fact_health_records):,}")
     total_dim_records = len(dim_demographics) + len(dim_lifestyle) + len(dim_medical_conditions) + len(dim_healthcare_access)
     print(f"   Total Dimension Records: {total_dim_records:,}")
     print(f"   Compression Ratio: {len(fact_health_records) / (len(fact_health_records) + total_dim_records):.1%} facts vs dimensions")
 
-def create_dimensional_model_from_dataframe(df_clean):
+def dimensional_model(df_clean):
     logging.info("Creating dimensional model from clean DataFrame")
     
     # Create Demographics Dimension
@@ -265,7 +265,7 @@ def main():
         print("DIMENSIONAL ETL COMPLETED SUCCESSFULLY! 🎉")
         print("=" * 60)
         
-        print(f"\n📁 Output Files:")
+        print(f"\nOutput Files:")
         print(f"   - {output_dir}/dim_demographics.csv ({len(dim_demographics)} records)")
         print(f"   - {output_dir}/dim_lifestyle.csv ({len(dim_lifestyle)} records)")
         print(f"   - {output_dir}/dim_medical_conditions.csv ({len(dim_medical_conditions)} records)")
