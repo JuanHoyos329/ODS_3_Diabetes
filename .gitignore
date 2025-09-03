@@ -73,6 +73,7 @@ poetry.lock
 # Data files (keep structure but not large datasets)
 data/processed/*.csv
 data/final/*.csv
+data/raw/*.csv
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/final/.gitkeep
