@@ -1,0 +1,7 @@
+2025-09-02 22:50:22,180 - root - INFO - Starting Database Loader
+2025-09-02 22:50:22,250 - root - ERROR - Error creating database: 1007: Can't create database 'diabetesDB'; database exists
+2025-09-02 22:50:22,250 - root - ERROR - ❌ Error during database loading: Failed to create/verify database
+Traceback (most recent call last):
+  File "/Users/jaristizabal/Documents/Proyecto ETL/src/database_loader.py", line 491, in main
+    raise Exception("Failed to create/verify database")
+Exception: Failed to create/verify database

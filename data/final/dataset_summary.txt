@@ -1,0 +1,41 @@
+=== MAIN DATASET (3-class) ===
+Shape: (253680, 22)
+Diabetes distribution:
+  Class 0.0: 213703 (84.2%)
+  Class 1.0: 4631 (1.8%)
+  Class 2.0: 35346 (13.9%)
+
+=== FEATURES ===
+Target Variable:
+- Diabetes_012: 0=No diabetes, 1=Pre-diabetes, 2=Diabetes
+
+Feature Categories:
+- Demographics: Sex, Age, Education, Income
+- Health Conditions: HighBP, HighChol, Stroke, HeartDiseaseorAttack
+- Lifestyle: Smoker, PhysActivity, Fruits, Veggies, HvyAlcoholConsump
+- Healthcare: AnyHealthcare, NoDocbcCost, CholCheck
+- Health Status: GenHlth, MentHlth, PhysHlth, DiffWalk, BMI
+
+=== COLUMN DESCRIPTIONS ===
+Diabetes_012: Target variable (0=No diabetes, 1=Pre-diabetes, 2=Diabetes)
+HighBP: High blood pressure (0=No, 1=Yes)
+HighChol: High cholesterol (0=No, 1=Yes)
+CholCheck: Cholesterol check in past 5 years (0=No, 1=Yes)
+BMI: Body Mass Index (rounded to nearest integer)
+Smoker: Smoked 100+ cigarettes (0=No, 1=Yes)
+Stroke: Ever had stroke (0=No, 1=Yes)
+HeartDiseaseorAttack: Coronary heart disease or MI (0=No, 1=Yes)
+PhysActivity: Physical activity in past 30 days (0=No, 1=Yes)
+Fruits: Consume fruits 1+ times per day (0=No, 1=Yes)
+Veggies: Consume vegetables 1+ times per day (0=No, 1=Yes)
+HvyAlcoholConsump: Heavy alcohol consumption (0=No, 1=Yes)
+AnyHealthcare: Has healthcare coverage (0=No, 1=Yes)
+NoDocbcCost: Could not see doctor due to cost (0=No, 1=Yes)
+GenHlth: General health (1=Excellent to 5=Poor)
+MentHlth: Mental health not good (days in past 30)
+PhysHlth: Physical health not good (days in past 30)
+DiffWalk: Difficulty walking/climbing stairs (0=No, 1=Yes)
+Sex: Gender (0=Female, 1=Male)
+Age: Age categories (1-13, representing 5-year increments)
+Education: Education level (1-6)
+Income: Household income (1-8)
