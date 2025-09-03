@@ -77,7 +77,7 @@ data/raw/*.csv
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/final/.gitkeep
-data/csvs/*.csv
+data\csvs\*.csv
 
 # Logs
 logs/*.log
