@@ -1,7 +1,3 @@
-"""
-Configuration file for Diabetes Health Indicators ETL Pipeline
-"""
-
 import os
 
 # Directory paths
@@ -43,13 +39,11 @@ EXPECTED_FINAL_COLS = 22
 
 # MySQL Database Configuration
 DB_CONFIG = {
-    'host': 'localhost',
-    'port': 3306,
-    'user': 'root',
-    'password': '',  # No password
-    'database': 'diabetesDB',
-    'charset': 'utf8mb4',
-    'autocommit': True
+    "host": "localhost",
+    "user": "root",
+    "password": "root",
+    "database": "diabetesDB",
+    "port": 3306
 }
 
 # Database table names

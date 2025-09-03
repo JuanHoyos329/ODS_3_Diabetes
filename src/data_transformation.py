@@ -1,5 +1,3 @@
-# Data transformation functions for BRFSS diabetes data
-
 import pandas as pd
 import numpy as np
 import logging
@@ -76,6 +74,37 @@ def clean_ordinal_variables(df: pd.DataFrame) -> pd.DataFrame:
     
     return df_copy
 
+def transform_sex_variable(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transform SEX variable from BRFSS coding to descriptive text.
+    BRFSS coding: 1 = Male, 2 = Female
+    Database will store: 'Masculino', 'Femenino'
+    """
+    df_copy = df.copy()
+    
+    if 'SEX' in df_copy.columns:
+        # Create mapping from BRFSS to descriptive text
+        sex_mapping = {
+            1: 'Masculino',  # Male -> Masculino
+            2: 'Femenino'    # Female -> Femenino
+        }
+        
+        # Apply the transformation
+        df_copy['SEX'] = df_copy['SEX'].map(sex_mapping)
+        
+        # Log the distribution
+        sex_counts = df_copy['SEX'].value_counts()
+        logging.info(f"Sex variable distribution after transformation: {sex_counts.to_dict()}")
+        
+        # Check for any unmapped values
+        if df_copy['SEX'].isna().any():
+            unmapped_count = df_copy['SEX'].isna().sum()
+            logging.warning(f"Found {unmapped_count} unmapped values in SEX variable")
+    else:
+        logging.warning("SEX column not found in dataset")
+    
+    return df_copy
+
 def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
     df_renamed = df.copy()
     
@@ -122,7 +151,8 @@ def full_transformation_pipeline(df: pd.DataFrame) -> pd.DataFrame:
     df = transform_diabetes_variable(df)
     df = transform_binary_variables(df)
     df = transform_continuous_variables(df)
-    df = clean_ordinal_variables(df) 
+    df = clean_ordinal_variables(df)
+    df = transform_sex_variable(df) 
     df = rename_columns(df)
     
     logging.info(f"Main dataset final shape: {df.shape}")

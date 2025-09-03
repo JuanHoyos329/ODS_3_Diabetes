@@ -1,14 +1,7 @@
--- =====================================================
--- Script SQL para crear Base de Datos diabetesDB
--- Esquema Estrella - Dataset Diabetes BRFSS 2015
--- =====================================================
-
--- Crear la base de datos
 CREATE DATABASE IF NOT EXISTS diabetesDB 
 CHARACTER SET utf8mb4 
 COLLATE utf8mb4_unicode_ci;
 
--- Usar la base de datos
 USE diabetesDB;
 
 -- Configuraciones importantes para integridad referencial
@@ -22,7 +15,7 @@ SET sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVIS
 -- Dimensión Demographics
 CREATE TABLE dim_demographics (
     demographic_id INT AUTO_INCREMENT PRIMARY KEY,
-    sex INT NOT NULL COMMENT '0=Femenino, 1=Masculino',
+    sex VARCHAR(10) NOT NULL COMMENT 'Masculino o Femenino',
     age_group INT NOT NULL COMMENT '1=18-24, 2=25-29, ..., 13=80+',
     education_level INT NOT NULL COMMENT '1=Nunca asistió, 6=Universidad graduado',
     income_bracket INT NOT NULL COMMENT '1=<$10k, 8=$75k+',
@@ -126,7 +119,6 @@ CREATE TABLE fact_health_records (
         REFERENCES dim_healthcare_access(healthcare_access_id)
         ON DELETE RESTRICT ON UPDATE CASCADE,
     
-    -- Índices para mejorar performance en consultas analíticas
     INDEX idx_diabetes_status (diabetes_status),
     INDEX idx_bmi (bmi_value),
     INDEX idx_general_health (general_health_score),
@@ -135,7 +127,6 @@ CREATE TABLE fact_health_records (
     INDEX idx_medical (medical_conditions_id),
     INDEX idx_healthcare (healthcare_access_id),
     
-    -- Índice compuesto para análisis multidimensional
     INDEX idx_analysis (diabetes_status, demographic_id, lifestyle_id),
     
     -- Constraints para validación de datos
@@ -167,7 +158,7 @@ SELECT
     f.general_health_score,
     
     -- Dimensión Demographics
-    CASE d.sex WHEN 0 THEN 'Femenino' ELSE 'Masculino' END as sex,
+    d.sex,
     d.age_group,
     d.education_level,
     d.income_bracket,

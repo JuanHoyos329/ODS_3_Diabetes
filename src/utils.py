@@ -1,5 +1,3 @@
-# Utility functions for logging and file operations
-
 import logging
 import os
 from datetime import datetime

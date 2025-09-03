@@ -1,5 +1,3 @@
-# Main ETL pipeline - loads raw data, transforms, and loads to MySQL
-
 import sys
 import os
 import logging
@@ -24,12 +22,63 @@ from database_loader import MySQLLoader
 from config import DB_CONFIG, DB_TABLES
 from utils import setup_logging, ensure_directory_exists
 
+def test_mysql_connection():
+    """Test basic MySQL connection without specifying database"""
+    try:
+        # Test basic connection to MySQL server
+        basic_config = {
+            'host': DB_CONFIG['host'],
+            'port': DB_CONFIG['port'],
+            'user': DB_CONFIG['user'],
+            'password': DB_CONFIG['password']
+        }
+        
+        print(f"Testing MySQL connection to {basic_config['host']}:{basic_config['port']}...")
+        test_connection = mysql.connector.connect(**basic_config)
+        
+        # Test basic query
+        test_cursor = test_connection.cursor()
+        test_cursor.execute("SELECT VERSION()")
+        version = test_cursor.fetchone()[0]
+        print(f"✅ MySQL Server connected successfully! Version: {version}")
+        
+        test_cursor.close()
+        test_connection.close()
+        return True
+        
+    except Error as e:
+        print(f"❌ MySQL connection test failed: {str(e)}")
+        print(f"\n🔧 Please check:")
+        print(f"  • MySQL server is running")
+        print(f"  • Host: {DB_CONFIG['host']}")
+        print(f"  • Port: {DB_CONFIG['port']}")
+        print(f"  • User: {DB_CONFIG['user']}")
+        print(f"  • Password: {'[SET]' if DB_CONFIG['password'] else '[EMPTY]'}")
+        return False
+
 def connect_to_database():
     try:
+        # First, create the database if it doesn't exist
+        temp_config = DB_CONFIG.copy()
+        database_name = temp_config.pop('database')
+        
+        # Connect without database to create it
+        temp_connection = mysql.connector.connect(**temp_config)
+        temp_cursor = temp_connection.cursor()
+        temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
+        temp_cursor.close()
+        temp_connection.close()
+        
+        # Now connect to the database
         connection = mysql.connector.connect(**DB_CONFIG)
         return connection
     except Error as e:
-        print(f"❌ Error connecting to MySQL: {str(e)}")
+        print(f"Error connecting to MySQL: {str(e)}")
+        print(f"Please ensure MySQL server is running and credentials are correct:")
+        print(f"  Host: {DB_CONFIG['host']}")
+        print(f"  Port: {DB_CONFIG['port']}")
+        print(f"  User: {DB_CONFIG['user']}")
+        print(f"  Database: {DB_CONFIG['database']}")
         return None
 
 def load_data_from_database(connection):
@@ -39,11 +88,11 @@ def load_data_from_database(connection):
         for table_key, table_name in DB_TABLES.items():
             query = f"SELECT * FROM {table_name}"
             tables[table_key] = pd.read_sql(query, connection)
-            print(f"✅ Loaded {len(tables[table_key])} records from {table_name}")
+            print(f"Loaded {len(tables[table_key])} records from {table_name}")
         
         return tables
     except Error as e:
-        print(f"❌ Error loading data from database: {str(e)}")
+        print(f"Error loading data from database: {str(e)}")
         return None
 
 def analyze_diabetes_data(tables):
@@ -54,12 +103,12 @@ def analyze_diabetes_data(tables):
     sns.set_palette("husl")
     
     # Basic statistics
-    print(f"\n📊 Dataset Statistics:")
+    print(f"\nDataset Statistics:")
     print(f"  - Total health records: {len(fact_df):,}")
     
     # Diabetes distribution
     diabetes_counts = fact_df['diabetes_status'].value_counts().sort_index()
-    print(f"\n🩺 Diabetes Distribution:")
+    print(f"\nDiabetes Distribution:")
     class_names = {0: "No diabetes", 1: "Pre-diabetes", 2: "Diabetes"}
     for class_val, count in diabetes_counts.items():
         percentage = (count / len(fact_df)) * 100
@@ -70,7 +119,7 @@ def analyze_diabetes_data(tables):
     labels = [class_names[i] for i in sorted(diabetes_counts.keys())]
     sizes = [diabetes_counts[i] for i in sorted(diabetes_counts.keys())]
     colors = ['#66b3ff', '#ffcc99', '#ff9999']
-    
+
     plt.subplot(1, 2, 1)
     plt.pie(sizes, labels=labels, autopct='%1.1f%%', colors=colors, startangle=90)
     plt.title('Diabetes Status Distribution')
@@ -87,7 +136,7 @@ def analyze_diabetes_data(tables):
     plt.tight_layout()
     plt.savefig('diabetes_distribution.png', dpi=300, bbox_inches='tight')
     plt.close()
-    print("✅ Diabetes distribution charts saved to diabetes_distribution.png")
+    print("Diabetes distribution charts saved to diabetes_distribution.png")
     
     # Age group analysis if demographics available
     if 'dim_demographics' in tables:
@@ -123,7 +172,7 @@ def analyze_diabetes_data(tables):
             plt.tight_layout()
             plt.savefig('age_group_analysis.png', dpi=300, bbox_inches='tight')
             plt.close()
-            print("✅ Age group analysis chart saved to age_group_analysis.png")
+            print("Age group analysis chart saved to age_group_analysis.png")
     
     # Lifestyle analysis
     if 'dim_lifestyle' in tables:
@@ -199,7 +248,7 @@ def analyze_diabetes_data(tables):
                 plt.tight_layout()
                 plt.savefig('lifestyle_analysis.png', dpi=300, bbox_inches='tight')
                 plt.close()
-                print("✅ Lifestyle impact analysis charts saved to lifestyle_analysis.png")
+                print("Lifestyle impact analysis charts saved to lifestyle_analysis.png")
 
 
 def main():
@@ -224,7 +273,7 @@ def main():
         
         print("Loading raw diabetes dataset...")
         df_raw = load_raw_data()
-        print(f"✅ Successfully loaded dataset: {df_raw.shape[0]} rows, {df_raw.shape[1]} columns")
+        print(f"Successfully loaded dataset: {df_raw.shape[0]} rows, {df_raw.shape[1]} columns")
         
         # Step 2: Data Transformation
         print("\n" + "─" * 50)
@@ -233,7 +282,7 @@ def main():
         
         print("Executing transformation pipeline...")
         df_clean = full_transformation_pipeline(df_raw)
-        print(f"✅ Transformation completed: {df_clean.shape[0]} rows, {df_clean.shape[1]} columns")
+        print(f"Transformation completed: {df_clean.shape[0]} rows, {df_clean.shape[1]} columns")
         
         # Show class distribution
         print(f"\nDiabetes class distribution:")
@@ -250,7 +299,7 @@ def main():
         
         print("Creating dimensional tables...")
         tables = create_dimensional_model_from_dataframe(df_clean)
-        print(f"✅ Created {len(tables)} dimensional tables:")
+        print(f"Created {len(tables)} dimensional tables:")
         for table_name, table_df in tables.items():
             print(f"  - {table_name}: {len(table_df)} records")
         
@@ -259,7 +308,11 @@ def main():
         print("STEP 4: DATABASE CONNECTION")
         print("─" * 50)
         
-        print(f"Connecting to MySQL database: {DB_CONFIG['database']}...")
+        # Test basic MySQL connection first
+        if not test_mysql_connection():
+            raise Exception("MySQL server connection failed")
+        
+        print(f"\nConnecting to MySQL database: {DB_CONFIG['database']}...")
         connection = connect_to_database()
         if not connection:
             raise Exception("Failed to connect to database")
@@ -276,10 +329,8 @@ def main():
         loader.cursor = connection.cursor()
         
         print("Creating database tables...")
-        if not loader.create_dimension_tables():
-            raise Exception("Failed to create dimension tables")
-        if not loader.create_fact_table():
-            raise Exception("Failed to create fact table")
+        if not loader.create_all_tables():
+            raise Exception("Failed to create database tables")
         print("✅ Database tables created")
         
         print("Loading dimensional data to MySQL...")
@@ -292,7 +343,7 @@ def main():
         
         print("Analyzing loaded data...")
         analyze_diabetes_data(tables)
-        print("✅ Analysis completed")
+        print("Analysis completed")
         
         # Final Summary
         print("\n" + "=" * 60)
@@ -302,17 +353,17 @@ def main():
         fact_records = len(tables['fact_health_records'])
         total_dims = sum(len(tables[key]) for key in tables if key.startswith('dim_'))
         
-        print(f"\n📊 ETL Pipeline Statistics:")
+        print(f"\nETL Pipeline Statistics:")
         print(f"  - Raw records processed: {len(df_raw):,}")
         print(f"  - Clean records: {len(df_clean):,}")
         print(f"  - Fact records loaded: {fact_records:,}")
         print(f"  - Dimension records: {total_dims:,}")
         print(f"  - Database: {DB_CONFIG['database']}")
+
+        print(f"\nProcess Log:")
+        print(f"  {log_file}")
         
-        print(f"\n📁 Process Log:")
-        print(f"  📁 {log_file}")
-        
-        print(f"\n🚀 Pipeline Complete - Data ready in MySQL:")
+        print(f"\nPipeline Complete - Data ready in MySQL:")
         print(f"  ✅ Raw data extracted and cleaned")
         print(f"  ✅ Dimensional model created")
         print(f"  ✅ Data loaded to MySQL tables")
@@ -320,13 +371,13 @@ def main():
         
         # Close connection
         connection.close()
-        print(f"\n🔌 Database connection closed")
+        print(f"\nDatabase connection closed")
         
         logging.info("ETL Pipeline completed successfully")
         return tables
         
     except FileNotFoundError as e:
-        error_msg = f"❌ Error: Dataset file not found. {str(e)}"
+        error_msg = f"Error: Dataset file not found. {str(e)}"
         print(f"\n{error_msg}")
         print(f"\nPlease ensure the diabetes dataset is available at:")
         print(f"  - data/raw/diabetes_012_health_indicators_BRFSS2015.csv")
@@ -334,7 +385,7 @@ def main():
         return None
         
     except Error as e:
-        error_msg = f"❌ Database Error: {str(e)}"
+        error_msg = f"Database Error: {str(e)}"
         print(f"\n{error_msg}")
         print(f"\nPlease ensure:")
         print(f"  - MySQL server is running")
@@ -343,7 +394,7 @@ def main():
         return None
         
     except Exception as e:
-        error_msg = f"❌ Error during ETL pipeline execution: {str(e)}"
+        error_msg = f"Error during ETL pipeline execution: {str(e)}"
         print(f"\n{error_msg}")
         logging.error(error_msg, exc_info=True)
         return None
@@ -394,8 +445,8 @@ if __name__ == "__main__":
         result = main()
         
         if result is not None:
-            print(f"\n🚀 Analysis completed! Check the results above.")
+            print(f"\nAnalysis completed! Check the results above.")
             sys.exit(0)
         else:
-            print(f"\n💥 Analysis failed. Check the logs for details.")
+            print(f"\nAnalysis failed. Check the logs for details.")
             sys.exit(1)

@@ -1,9 +1,0 @@
-2025-09-02 22:49:31,998 - root - INFO - Starting Database Loader
-2025-09-02 22:49:31,998 - root - ERROR - ❌ Error during database loading: EOF when reading a line
-Traceback (most recent call last):
-  File "/Users/jaristizabal/Documents/Proyecto ETL/src/database_loader.py", line 488, in main
-    db_config = get_db_config()
-  File "/Users/jaristizabal/Documents/Proyecto ETL/src/database_loader.py", line 416, in get_db_config
-    modify = input("\nModify any settings? (y/N): ").strip().lower()
-             ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-EOFError: EOF when reading a line

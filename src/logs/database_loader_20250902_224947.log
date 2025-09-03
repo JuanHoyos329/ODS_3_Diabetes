@@ -1,6 +1,0 @@
-2025-09-02 22:49:47,915 - root - INFO - Starting Database Loader
-2025-09-02 22:49:47,915 - root - ERROR - ❌ Error during database loading: MySQLLoader.__init__() got an unexpected keyword argument 'charset'
-Traceback (most recent call last):
-  File "/Users/jaristizabal/Documents/Proyecto ETL/src/database_loader.py", line 481, in main
-    loader = MySQLLoader(**db_config)
-TypeError: MySQLLoader.__init__() got an unexpected keyword argument 'charset'

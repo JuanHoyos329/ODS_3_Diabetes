@@ -1,5 +1,3 @@
-# MySQL loader for diabetes dimensional tables
-
 import pandas as pd
 import mysql.connector
 from mysql.connector import Error
@@ -7,28 +5,280 @@ import os
 import sys
 import logging
 from datetime import datetime
-from typing import Dict, Any, Optional
 
 from utils import setup_logging, ensure_directory_exists
-import sys
 sys.path.append('..')
 from config import DB_CONFIG, DB_TABLES, DB_VIEWS
 
+def get_connection():
+    """Get database connection using configuration from config.py"""
+    return mysql.connector.connect(**DB_CONFIG)
+
+def create_tables():
+    """Create all tables in the database"""
+    try:
+        # First ensure database exists
+        temp_config = DB_CONFIG.copy()
+        database_name = temp_config.pop('database')
+        
+        # Connect without database to create it
+        temp_connection = mysql.connector.connect(**temp_config)
+        temp_cursor = temp_connection.cursor()
+        temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
+        temp_cursor.execute(f"USE {database_name}")
+        temp_cursor.close()
+        temp_connection.close()
+        
+        # Now connect to the database
+        connection = get_connection()
+        cursor = connection.cursor()
+        
+        # Drop tables if they exist (in correct order due to foreign keys)
+        drop_statements = [
+            "DROP TABLE IF EXISTS fact_health_records",
+            "DROP TABLE IF EXISTS dim_demographics", 
+            "DROP TABLE IF EXISTS dim_lifestyle",
+            "DROP TABLE IF EXISTS dim_medical_conditions",
+            "DROP TABLE IF EXISTS dim_healthcare_access"
+        ]
+        
+        for statement in drop_statements:
+            cursor.execute(statement)
+        
+        # Create tables
+        create_statements = [
+            """
+            CREATE TABLE dim_demographics (
+                demographic_id INT PRIMARY KEY,
+                sex VARCHAR(10) NOT NULL COMMENT 'Masculino o Femenino',
+                age_group DECIMAL(3,1) NOT NULL COMMENT '1-13 representing 5-year increments',
+                education_level DECIMAL(3,1) NOT NULL COMMENT '1-6 education levels',
+                income_bracket DECIMAL(3,1) NOT NULL COMMENT '1-8 income brackets',
+                INDEX idx_sex (sex),
+                INDEX idx_age_group (age_group),
+                INDEX idx_education (education_level),
+                INDEX idx_income (income_bracket)
+            ) ENGINE=InnoDB COMMENT='Demographics dimension table'
+            """,
+            """
+            CREATE TABLE dim_lifestyle (
+                lifestyle_id INT PRIMARY KEY,
+                smoker_status DECIMAL(3,1) NOT NULL COMMENT '0=Non-smoker, 1=Smoker',
+                physical_activity DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                fruits_consumption DECIMAL(3,1) NOT NULL COMMENT '0=<1/day, 1=1+/day',
+                vegetables_consumption DECIMAL(3,1) NOT NULL COMMENT '0=<1/day, 1=1+/day',
+                heavy_alcohol_consumption DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                INDEX idx_smoker (smoker_status),
+                INDEX idx_physical_activity (physical_activity)
+            ) ENGINE=InnoDB COMMENT='Lifestyle dimension table'
+            """,
+            """
+            CREATE TABLE dim_medical_conditions (
+                medical_conditions_id INT PRIMARY KEY,
+                high_blood_pressure DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                high_cholesterol DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes', 
+                cholesterol_check DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                stroke_history DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                heart_disease_or_attack DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                difficulty_walking DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                INDEX idx_high_bp (high_blood_pressure),
+                INDEX idx_high_chol (high_cholesterol),
+                INDEX idx_heart_disease (heart_disease_or_attack)
+            ) ENGINE=InnoDB COMMENT='Medical conditions dimension table'
+            """,
+            """
+            CREATE TABLE dim_healthcare_access (
+                healthcare_access_id INT PRIMARY KEY,
+                any_healthcare_coverage DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                no_doctor_due_to_cost DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+                INDEX idx_healthcare_coverage (any_healthcare_coverage),
+                INDEX idx_doctor_cost (no_doctor_due_to_cost)
+            ) ENGINE=InnoDB COMMENT='Healthcare access dimension table'
+            """,
+            """
+            CREATE TABLE fact_health_records (
+                record_id BIGINT PRIMARY KEY,
+                diabetes_status DECIMAL(3,1) NOT NULL COMMENT '0=No diabetes, 1=Pre-diabetes, 2=Diabetes',
+                bmi_value DECIMAL(5,2) NOT NULL COMMENT 'Body Mass Index',
+                mental_health_days DECIMAL(3,1) NOT NULL COMMENT 'Days 0-30',
+                physical_health_days DECIMAL(3,1) NOT NULL COMMENT 'Days 0-30', 
+                general_health_score DECIMAL(3,1) NOT NULL COMMENT '1=Excellent to 5=Poor',
+                demographic_id INT NOT NULL,
+                lifestyle_id INT NOT NULL,
+                medical_conditions_id INT NOT NULL,
+                healthcare_access_id INT NOT NULL,
+                
+                FOREIGN KEY (demographic_id) REFERENCES dim_demographics(demographic_id),
+                FOREIGN KEY (lifestyle_id) REFERENCES dim_lifestyle(lifestyle_id),
+                FOREIGN KEY (medical_conditions_id) REFERENCES dim_medical_conditions(medical_conditions_id),
+                FOREIGN KEY (healthcare_access_id) REFERENCES dim_healthcare_access(healthcare_access_id),
+                
+                INDEX idx_diabetes_status (diabetes_status),
+                INDEX idx_bmi (bmi_value),
+                INDEX idx_demographic (demographic_id),
+                INDEX idx_lifestyle (lifestyle_id),
+                INDEX idx_medical (medical_conditions_id),
+                INDEX idx_healthcare (healthcare_access_id),
+                INDEX idx_diabetes_bmi (diabetes_status, bmi_value)
+            ) ENGINE=InnoDB COMMENT='Health records fact table'
+            """
+        ]
+        
+        for statement in create_statements:
+            cursor.execute(statement)
+        
+        connection.commit()
+        cursor.close()
+        connection.close()
+        
+        print("✅ All tables created successfully")
+        
+    except mysql.connector.Error as err:
+        print(f"❌ Error creating tables: {err}")
+        raise
+
+def save_to_sql(dataframes: dict, output_file: str = "diabetesDB.sql"):
+    """
+    Generate SQL DDL + INSERT statements for the transformed DataFrames.
+    """
+    sql_statements = []
+
+    # ==============================
+    # CREATE DATABASE AND TABLES
+    # ==============================
+    sql_statements.append(f"""DROP DATABASE IF EXISTS {DB_CONFIG['database']};
+CREATE DATABASE {DB_CONFIG['database']};
+USE {DB_CONFIG['database']};
+
+DROP TABLE IF EXISTS fact_health_records;
+DROP TABLE IF EXISTS dim_demographics;
+DROP TABLE IF EXISTS dim_lifestyle;
+DROP TABLE IF EXISTS dim_medical_conditions;
+DROP TABLE IF EXISTS dim_healthcare_access;
+""")
+
+    sql_statements.append("""
+    CREATE TABLE dim_demographics (
+        demographic_id INT PRIMARY KEY,
+        sex DECIMAL(3,1) NOT NULL COMMENT '0=Female, 1=Male',
+        age_group DECIMAL(3,1) NOT NULL COMMENT '1-13 representing 5-year increments',
+        education_level DECIMAL(3,1) NOT NULL COMMENT '1-6 education levels',
+        income_bracket DECIMAL(3,1) NOT NULL COMMENT '1-8 income brackets',
+        INDEX idx_sex (sex),
+        INDEX idx_age_group (age_group),
+        INDEX idx_education (education_level),
+        INDEX idx_income (income_bracket)
+    ) ENGINE=InnoDB COMMENT='Demographics dimension table';
+    """)
+
+    sql_statements.append("""
+    CREATE TABLE dim_lifestyle (
+        lifestyle_id INT PRIMARY KEY,
+        smoker_status DECIMAL(3,1) NOT NULL COMMENT '0=Non-smoker, 1=Smoker',
+        physical_activity DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        fruits_consumption DECIMAL(3,1) NOT NULL COMMENT '0=<1/day, 1=1+/day',
+        vegetables_consumption DECIMAL(3,1) NOT NULL COMMENT '0=<1/day, 1=1+/day',
+        heavy_alcohol_consumption DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        INDEX idx_smoker (smoker_status),
+        INDEX idx_physical_activity (physical_activity)
+    ) ENGINE=InnoDB COMMENT='Lifestyle dimension table';
+    """)
+
+    sql_statements.append("""
+    CREATE TABLE dim_medical_conditions (
+        medical_conditions_id INT PRIMARY KEY,
+        high_blood_pressure DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        high_cholesterol DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes', 
+        cholesterol_check DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        stroke_history DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        heart_disease_or_attack DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        difficulty_walking DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        INDEX idx_high_bp (high_blood_pressure),
+        INDEX idx_high_chol (high_cholesterol),
+        INDEX idx_heart_disease (heart_disease_or_attack)
+    ) ENGINE=InnoDB COMMENT='Medical conditions dimension table';
+    """)
+
+    sql_statements.append("""
+    CREATE TABLE dim_healthcare_access (
+        healthcare_access_id INT PRIMARY KEY,
+        any_healthcare_coverage DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        no_doctor_due_to_cost DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
+        INDEX idx_healthcare_coverage (any_healthcare_coverage),
+        INDEX idx_doctor_cost (no_doctor_due_to_cost)
+    ) ENGINE=InnoDB COMMENT='Healthcare access dimension table';
+    """)
+
+    sql_statements.append("""
+    CREATE TABLE fact_health_records (
+        record_id BIGINT PRIMARY KEY,
+        diabetes_status DECIMAL(3,1) NOT NULL COMMENT '0=No diabetes, 1=Pre-diabetes, 2=Diabetes',
+        bmi_value DECIMAL(5,2) NOT NULL COMMENT 'Body Mass Index',
+        mental_health_days DECIMAL(3,1) NOT NULL COMMENT 'Days 0-30',
+        physical_health_days DECIMAL(3,1) NOT NULL COMMENT 'Days 0-30', 
+        general_health_score DECIMAL(3,1) NOT NULL COMMENT '1=Excellent to 5=Poor',
+        demographic_id INT NOT NULL,
+        lifestyle_id INT NOT NULL,
+        medical_conditions_id INT NOT NULL,
+        healthcare_access_id INT NOT NULL,
+        
+        FOREIGN KEY (demographic_id) REFERENCES dim_demographics(demographic_id),
+        FOREIGN KEY (lifestyle_id) REFERENCES dim_lifestyle(lifestyle_id),
+        FOREIGN KEY (medical_conditions_id) REFERENCES dim_medical_conditions(medical_conditions_id),
+        FOREIGN KEY (healthcare_access_id) REFERENCES dim_healthcare_access(healthcare_access_id),
+        
+        INDEX idx_diabetes_status (diabetes_status),
+        INDEX idx_bmi (bmi_value),
+        INDEX idx_demographic (demographic_id),
+        INDEX idx_lifestyle (lifestyle_id),
+        INDEX idx_medical (medical_conditions_id),
+        INDEX idx_healthcare (healthcare_access_id),
+        INDEX idx_diabetes_bmi (diabetes_status, bmi_value)
+    ) ENGINE=InnoDB COMMENT='Health records fact table';
+    """)
+
+    # ==============================
+    # INSERT DATA
+    # ==============================
+    for table, df in dataframes.items():
+        if df.empty:
+            continue
+        for _, row in df.iterrows():
+            values = []
+            for v in row:
+                if pd.isna(v):
+                    values.append("NULL")
+                elif isinstance(v, str):
+                    values.append("'" + v.replace("'", "''") + "'")
+                else:
+                    values.append(str(v))
+            sql_statements.append(
+                f"INSERT INTO {table} ({','.join(df.columns)}) VALUES ({','.join(values)});"
+            )
+
+    # Save to file
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write("\n".join(sql_statements))
+    print(f"✅ SQL script saved to {output_file}")
+
 class MySQLLoader:
-    
-    def __init__(self, host: str = 'localhost', port: int = 3306, 
-                 user: str = 'root', password: str = '', database: str = 'diabetes_dw'):
-        self.config = {
-            'host': host,
-            'port': port,
-            'user': user,
-            'password': password,
-            'database': database,
-            'raise_on_warnings': True
-        }
+
+    def __init__(self, host=None, port=None, user=None, password=None, database=None):
+        if host is None:
+            self.config = DB_CONFIG
+        else:
+            self.config = {
+                'host': host,
+                'port': port,
+                'user': user,
+                'password': password,
+                'database': database,
+                'charset': 'utf8mb4',
+                'autocommit': True
+            }
         self.connection = None
         self.cursor = None
-        
+
     def connect(self) -> bool:
         try:
             self.connection = mysql.connector.connect(**self.config)
@@ -110,128 +360,15 @@ class MySQLLoader:
                 print(f"❌ Error creating database: {str(e)}")
                 return False
     
-    def create_dimension_tables(self) -> bool:
+    def create_all_tables(self) -> bool:
+        """Create all tables using the simplified create_tables function"""
         try:
-            # Drop tables if they exist (for clean reload)
-            drop_statements = [
-                "DROP TABLE IF EXISTS fact_health_records",
-                "DROP TABLE IF EXISTS dim_demographics", 
-                "DROP TABLE IF EXISTS dim_lifestyle",
-                "DROP TABLE IF EXISTS dim_medical_conditions",
-                "DROP TABLE IF EXISTS dim_healthcare_access"
-            ]
-            
-            for statement in drop_statements:
-                self.cursor.execute(statement)
-                
-            # Create dimension tables
-            create_statements = {
-                "dim_demographics": """
-                    CREATE TABLE dim_demographics (
-                        demographic_id INT PRIMARY KEY,
-                        sex DECIMAL(3,1) NOT NULL COMMENT '0=Female, 1=Male',
-                        age_group DECIMAL(3,1) NOT NULL COMMENT '1-13 representing 5-year increments',
-                        education_level DECIMAL(3,1) NOT NULL COMMENT '1-6 education levels',
-                        income_bracket DECIMAL(3,1) NOT NULL COMMENT '1-8 income brackets',
-                        INDEX idx_sex (sex),
-                        INDEX idx_age_group (age_group),
-                        INDEX idx_education (education_level),
-                        INDEX idx_income (income_bracket)
-                    ) ENGINE=InnoDB COMMENT='Demographics dimension table'
-                """,
-                
-                "dim_lifestyle": """
-                    CREATE TABLE dim_lifestyle (
-                        lifestyle_id INT PRIMARY KEY,
-                        smoker_status DECIMAL(3,1) NOT NULL COMMENT '0=Non-smoker, 1=Smoker',
-                        physical_activity DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        fruits_consumption DECIMAL(3,1) NOT NULL COMMENT '0=<1/day, 1=1+/day',
-                        vegetables_consumption DECIMAL(3,1) NOT NULL COMMENT '0=<1/day, 1=1+/day',
-                        heavy_alcohol_consumption DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        INDEX idx_smoker (smoker_status),
-                        INDEX idx_physical_activity (physical_activity)
-                    ) ENGINE=InnoDB COMMENT='Lifestyle dimension table'
-                """,
-                
-                "dim_medical_conditions": """
-                    CREATE TABLE dim_medical_conditions (
-                        medical_conditions_id INT PRIMARY KEY,
-                        high_blood_pressure DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        high_cholesterol DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes', 
-                        cholesterol_check DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        stroke_history DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        heart_disease_or_attack DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        difficulty_walking DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        INDEX idx_high_bp (high_blood_pressure),
-                        INDEX idx_high_chol (high_cholesterol),
-                        INDEX idx_heart_disease (heart_disease_or_attack)
-                    ) ENGINE=InnoDB COMMENT='Medical conditions dimension table'
-                """,
-                
-                "dim_healthcare_access": """
-                    CREATE TABLE dim_healthcare_access (
-                        healthcare_access_id INT PRIMARY KEY,
-                        any_healthcare_coverage DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        no_doctor_due_to_cost DECIMAL(3,1) NOT NULL COMMENT '0=No, 1=Yes',
-                        INDEX idx_healthcare_coverage (any_healthcare_coverage),
-                        INDEX idx_doctor_cost (no_doctor_due_to_cost)
-                    ) ENGINE=InnoDB COMMENT='Healthcare access dimension table'
-                """
-            }
-            
-            for table_name, create_sql in create_statements.items():
-                self.cursor.execute(create_sql)
-                logging.info(f"Created table: {table_name}")
-                print(f"✅ Created table: {table_name}")
-            
-            self.connection.commit()
+            # Use the new create_tables function
+            create_tables()
             return True
-            
-        except Error as e:
-            logging.error(f"Error creating dimension tables: {str(e)}")
-            print(f"❌ Error creating dimension tables: {str(e)}")
-            return False
-    
-    def create_fact_table(self) -> bool:
-        try:
-            create_fact_sql = """
-                CREATE TABLE fact_health_records (
-                    record_id BIGINT PRIMARY KEY,
-                    diabetes_status DECIMAL(3,1) NOT NULL COMMENT '0=No diabetes, 1=Pre-diabetes, 2=Diabetes',
-                    bmi_value DECIMAL(5,2) NOT NULL COMMENT 'Body Mass Index',
-                    mental_health_days DECIMAL(3,1) NOT NULL COMMENT 'Days 0-30',
-                    physical_health_days DECIMAL(3,1) NOT NULL COMMENT 'Days 0-30', 
-                    general_health_score DECIMAL(3,1) NOT NULL COMMENT '1=Excellent to 5=Poor',
-                    demographic_id INT NOT NULL,
-                    lifestyle_id INT NOT NULL,
-                    medical_conditions_id INT NOT NULL,
-                    healthcare_access_id INT NOT NULL,
-                    
-                    FOREIGN KEY (demographic_id) REFERENCES dim_demographics(demographic_id),
-                    FOREIGN KEY (lifestyle_id) REFERENCES dim_lifestyle(lifestyle_id),
-                    FOREIGN KEY (medical_conditions_id) REFERENCES dim_medical_conditions(medical_conditions_id),
-                    FOREIGN KEY (healthcare_access_id) REFERENCES dim_healthcare_access(healthcare_access_id),
-                    
-                    INDEX idx_diabetes_status (diabetes_status),
-                    INDEX idx_bmi (bmi_value),
-                    INDEX idx_demographic (demographic_id),
-                    INDEX idx_lifestyle (lifestyle_id),
-                    INDEX idx_medical (medical_conditions_id),
-                    INDEX idx_healthcare (healthcare_access_id),
-                    INDEX idx_diabetes_bmi (diabetes_status, bmi_value)
-                ) ENGINE=InnoDB COMMENT='Health records fact table'
-            """
-            
-            self.cursor.execute(create_fact_sql)
-            self.connection.commit()
-            
-            logging.info("Created fact table: fact_health_records")
-            print("✅ Created fact table: fact_health_records")
-            return True
-            
-        except Error as e:
-            logging.error(f"Error creating fact table: {str(e)}")
-            print(f"❌ Error creating fact table: {str(e)}")
+        except Exception as e:
+            logging.error(f"Error creating tables: {str(e)}")
+            print(f"❌ Error creating tables: {str(e)}")
             return False
     
     def load_csv_to_table(self, csv_file: str, table_name: str) -> bool:
@@ -268,7 +405,7 @@ class MySQLLoader:
             print(f"❌ General error loading {csv_file}: {str(e)}")
             return False
     
-    def verify_data_load(self) -> Dict[str, int]:
+    def verify_data_load(self):
         tables = [
             'dim_demographics',
             'dim_lifestyle', 
@@ -357,7 +494,7 @@ class MySQLLoader:
             print(f"❌ Error creating views: {str(e)}")
             return False
 
-def get_db_config() -> Dict[str, Any]:
+def get_db_config():
     print("\n" + "─" * 50) 
     print("MySQL DATABASE CONFIGURATION")
     print("─" * 50)
@@ -457,19 +594,16 @@ def main():
         print("STEP 2: CREATING TABLES")
         print("─" * 50)
         
-        print("Creating dimension tables...")
-        if not loader.create_dimension_tables():
-            raise Exception("Failed to create dimension tables")
+        print("Creating all database tables...")
+        if not loader.create_all_tables():
+            raise Exception("Failed to create database tables")
         
-        print("Creating fact table...")
-        if not loader.create_fact_table():
-            raise Exception("Failed to create fact table")
-        
-        # Step 3: Load data
+        # Step 3: Generate SQL file (optional)
         print("\n" + "─" * 50)
-        print("STEP 3: LOADING DATA")
+        print("STEP 3: GENERATING SQL BACKUP")
         print("─" * 50)
         
+        # Check if processed data exists to generate SQL backup
         data_files = {
             'dim_demographics': '../data/processed/dim_demographics.csv',
             'dim_lifestyle': '../data/processed/dim_lifestyle.csv',
@@ -478,20 +612,48 @@ def main():
             'fact_health_records': '../data/processed/fact_health_records.csv'
         }
         
+        # Try to load dataframes for SQL generation
+        dataframes = {}
+        for table_name, csv_file in data_files.items():
+            if os.path.exists(csv_file):
+                try:
+                    df = pd.read_csv(csv_file)
+                    dataframes[table_name] = df
+                    print(f"✅ Loaded {table_name}: {len(df)} records")
+                except Exception as e:
+                    print(f"⚠️  Could not load {table_name}: {e}")
+        
+        if dataframes:
+            sql_output_path = os.path.join('../sql', 'diabetesDB.sql')
+            save_to_sql(dataframes, sql_output_path)
+            print(f"✅ SQL backup generated: {sql_output_path}")
+        else:
+            print("ℹ️  No processed data files found, skipping SQL generation")
+        
+        # Step 4: Load data
+        print("\n" + "─" * 50)
+        print("STEP 4: LOADING DATA")
+        print("─" * 50)
+        
         success_count = 0
         for table_name, csv_file in data_files.items():
-            print(f"Loading {table_name}...")
-            if loader.load_csv_to_table(csv_file, table_name):
-                success_count += 1
+            if os.path.exists(csv_file):
+                print(f"Loading {table_name}...")
+                if loader.load_csv_to_table(csv_file, table_name):
+                    success_count += 1
+                else:
+                    print(f"⚠️  Failed to load {table_name}")
             else:
-                print(f"⚠️  Failed to load {table_name}")
+                print(f"⚠️  File not found: {csv_file}")
         
-        if success_count != len(data_files):
-            raise Exception(f"Only {success_count}/{len(data_files)} tables loaded successfully")
+        if success_count == 0:
+            print("ℹ️  No data files were loaded. Tables created successfully but are empty.")
+        elif success_count != len(data_files):
+            print(f"⚠️  Only {success_count}/{len(data_files)} tables loaded successfully")
         
-        # Step 4: Verify data load
+        # Step 5: Verify data load
         print("\n" + "─" * 50)
-        print("STEP 4: DATA VERIFICATION")
+        print("STEP 5: DATA VERIFICATION")
         print("─" * 50)
         
         print("Verifying data load...")
@@ -505,9 +667,9 @@ def main():
                 total_records += count
             print(f"  Total: {total_records:,} records")
         
-        # Step 5: Create analysis views
+        # Step 6: Create analysis views
         print("\n" + "─" * 50)
-        print("STEP 5: CREATING ANALYSIS VIEWS")
+        print("STEP 6: CREATING ANALYSIS VIEWS")
         print("─" * 50)
         
         print("Creating analysis views...")
@@ -525,9 +687,9 @@ def main():
         print("=" * 60)
         
         print(f"\n🗄️  Database: {db_config['database']}")
-        print(f"📊 Tables loaded: {len(data_files)}")
+        print(f"📊 Tables created: 5")
         print(f"🔍 Analysis views: 3")
-        print(f"📈 Total records: {sum(counts.values()) if counts else 'Unknown'}")
+        print(f"📈 Total records: {sum(counts.values()) if counts else 'None loaded'}")
         
         print(f"\n💡 Sample queries to try:")
         print(f"  SELECT * FROM vw_diabetes_summary;")
