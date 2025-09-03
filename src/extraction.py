@@ -16,9 +16,7 @@ def extract_brfss_data(file_path: str, year: str = '2015') -> pd.DataFrame:
     """
     try:
         df = pd.read_csv(file_path)
-        logging.info(
-            f"Extracted BRFSS {year} data: {df.shape[0]} rows, {df.shape[1]} columns"
-        )
+        logging.info(f"BRFSS {year} data extracted successfully")
         return df
     except Exception as e:
         logging.error(f"Error extracting BRFSS data from {file_path}: {e}")

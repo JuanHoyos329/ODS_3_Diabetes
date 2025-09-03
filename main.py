@@ -71,12 +71,12 @@ def main():
         # Step 1: Data Extraction
         print("\n[1] DATA EXTRACTION")
         df_raw = load_raw_data()
-        print(f"Dataset loaded: {df_raw.shape[0]} rows, {df_raw.shape[1]} columns")
+        print("Extraction completed")
         
         # Step 2: Transformation
         print("\n[2] DATA TRANSFORMATION")
         df_clean = full_transformation_pipeline(df_raw)
-        print(f"Clean dataset: {df_clean.shape[0]} rows, {df_clean.shape[1]} columns")
+        print("Transformation completed")
         
         print("\nClass distribution:")
         class_counts = df_clean['Diabetes_012'].value_counts().sort_index()
@@ -88,8 +88,7 @@ def main():
         # Step 3: Dimensional Modeling
         print("\n[3] DIMENSIONAL MODELING")
         tables = create_dimensional_model_from_dataframe(df_clean)
-        for table_name, table_df in tables.items():
-            print(f"  - {table_name}: {len(table_df)} records")
+        print("Dimensional model created")
         
         # Step 4: DB Connection
         print("\n[4] DATABASE CONNECTION")
@@ -111,18 +110,17 @@ def main():
             raise Exception("Failed to create database tables")
         
         loader.load_dataframes_to_mysql(tables)
+        print("Loading completed")
         
         # Step 6: Summary
         print("\n" + "=" * 60)
         print("ETL PIPELINE COMPLETED SUCCESSFULLY!")
         print("=" * 60)
         
-        print(f"Raw records: {len(df_raw):,}")
-        print(f"Clean records: {len(df_clean):,}")
-        print(f"Fact records: {len(tables['fact_health_records']):,}")
+        print("Processing completed successfully")
         
         connection.close()
-        print("\nDatabase connection closed")
+        print("Database connection closed")
         return tables
 
     except Exception as e:

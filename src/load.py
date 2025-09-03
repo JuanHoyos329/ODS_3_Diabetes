@@ -170,7 +170,7 @@ class MySQLLoader:
         df_clean = df.fillna(0)
         data_tuples = [tuple(row) for row in df_clean.values]
         self.cursor.executemany(insert_sql, data_tuples)
-        logging.info(f"Loaded {len(df)} records into {table_name}")
+        logging.info(f"Data loaded to {table_name}")
 
     def create_database(self, database_name: str = None) -> bool:
         if database_name is None:
@@ -204,18 +204,12 @@ class MySQLLoader:
         """Load multiple dataframes to their corresponding tables"""
         try:
             for table_name, df in tables.items():
-                logging.info(f"Loading {len(df)} records to {table_name}")
+                logging.info(f"Loading data to {table_name}")
                 self.load_dataframe(df, table_name)
             
             self.connection.commit()
             logging.info("All dataframes loaded successfully")
             
-            # Verify the data load
-            verification_counts = self.verify_data_load()
-            print("\nData loading verification:")
-            for table_name, count in verification_counts.items():
-                print(f"  - {table_name}: {count:,} records")
-                
         except Error as e:
             logging.error(f"Error loading dataframes: {str(e)}")
             if self.connection:
