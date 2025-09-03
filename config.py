@@ -43,7 +43,7 @@ DB_CONFIG = {
     "user": "root",
     "password": "root",
     "database": "diabetesDB",
-    "port": 3306
+    "port": 3306,
 }
 
 # Database table names

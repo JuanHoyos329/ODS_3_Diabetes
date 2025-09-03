@@ -71,12 +71,12 @@ Pipfile.lock
 poetry.lock
 
 # Data files (keep structure but not large datasets)
-data/raw/*.csv
 data/processed/*.csv
 data/final/*.csv
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/final/.gitkeep
+data/csvs/*.csv
 
 # Logs
 logs/*.log
