@@ -200,6 +200,28 @@ class MySQLLoader:
             logging.error(f"Error creating tables: {str(e)}")
             return False
 
+    def load_dataframes_to_mysql(self, tables: dict):
+        """Load multiple dataframes to their corresponding tables"""
+        try:
+            for table_name, df in tables.items():
+                logging.info(f"Loading {len(df)} records to {table_name}")
+                self.load_dataframe(df, table_name)
+            
+            self.connection.commit()
+            logging.info("All dataframes loaded successfully")
+            
+            # Verify the data load
+            verification_counts = self.verify_data_load()
+            print("\nData loading verification:")
+            for table_name, count in verification_counts.items():
+                print(f"  - {table_name}: {count:,} records")
+                
+        except Error as e:
+            logging.error(f"Error loading dataframes: {str(e)}")
+            if self.connection:
+                self.connection.rollback()
+            raise
+
     def verify_data_load(self):
         tables = [
             "dim_demographics",
