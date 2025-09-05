@@ -48,8 +48,8 @@ This project implements a **complete ETL pipeline** for analyzing health indicat
 ### 2. Clone the Repository
 
 ```bash
-git clone https://github.com/JuanHoyos329/Proyecto-ETL.git
-cd Proyecto-ETL
+git clone https://github.com/JuanHoyos329/ODS_3_Diabetes.git
+cd ODS_3_Diabetes
 ```
 
 ### 3. Install Dependencies
@@ -121,9 +121,9 @@ Proyecto-ETL/
 * **Cleaning**: Removes missing values and outliers
 * **Variable Mapping**:
 
-  * `DIABETE3`: 1 → "Diabetic", 2 → "Healthy", 3 → "Prediabetic"
+  * DIABETE3: 1 → "Diabetic", 2 → "Healthy", 3 → "Prediabetic"
   * Binary variables: 1 → "Yes", 2 → "No"
-  * `SEX`: 1 → "Male", 2 → "Female"
+  * SEX: 1 → "Male", 2 → "Female"
 * **Validation**: Ensures valid ranges
 * **Normalization**: Adjusts BMI (divided by 100)
 
