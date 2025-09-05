@@ -1,23 +1,17 @@
 import pandas as pd
 import mysql.connector
 from mysql.connector import Error
-import os
 import sys
 import logging
-from datetime import datetime
-
 
 sys.path.append('..')
 from config import DB_CONFIG, DB_TABLES
 
 
 def get_connection():
-    """Get database connection using configuration from config.py"""
     return mysql.connector.connect(**DB_CONFIG)
 
-
 def create_tables():
-    """Create all tables in the database"""
     try:
         temp_config = DB_CONFIG.copy()
         database_name = temp_config.pop('database')
@@ -58,11 +52,11 @@ def create_tables():
             """
             CREATE TABLE dim_lifestyle (
                 lifestyle_id INT PRIMARY KEY,
-                smoker_status DECIMAL(3,1) NOT NULL,
-                physical_activity DECIMAL(3,1) NOT NULL,
-                fruits_consumption DECIMAL(3,1) NOT NULL,
-                vegetables_consumption DECIMAL(3,1) NOT NULL,
-                heavy_alcohol_consumption DECIMAL(3,1) NOT NULL,
+                smoker_status VARCHAR(10) NOT NULL,
+                physical_activity VARCHAR(10) NOT NULL,
+                fruits_consumption VARCHAR(10) NOT NULL,
+                vegetables_consumption VARCHAR(10) NOT NULL,
+                heavy_alcohol_consumption VARCHAR(10) NOT NULL,
                 INDEX idx_smoker (smoker_status),
                 INDEX idx_physical_activity (physical_activity)
             ) ENGINE=InnoDB
@@ -70,12 +64,12 @@ def create_tables():
             """
             CREATE TABLE dim_medical_conditions (
                 medical_conditions_id INT PRIMARY KEY,
-                high_blood_pressure DECIMAL(3,1) NOT NULL,
-                high_cholesterol DECIMAL(3,1) NOT NULL,
-                cholesterol_check DECIMAL(3,1) NOT NULL,
-                stroke_history DECIMAL(3,1) NOT NULL,
-                heart_disease_or_attack DECIMAL(3,1) NOT NULL,
-                difficulty_walking DECIMAL(3,1) NOT NULL,
+                high_blood_pressure VARCHAR(10) NOT NULL,
+                high_cholesterol VARCHAR(10) NOT NULL,
+                cholesterol_check VARCHAR(10) NOT NULL,
+                stroke_history VARCHAR(10) NOT NULL,
+                heart_disease_or_attack VARCHAR(10) NOT NULL,
+                difficulty_walking VARCHAR(10) NOT NULL,
                 INDEX idx_high_bp (high_blood_pressure),
                 INDEX idx_high_chol (high_cholesterol),
                 INDEX idx_heart_disease (heart_disease_or_attack)
@@ -84,8 +78,8 @@ def create_tables():
             """
             CREATE TABLE dim_healthcare_access (
                 healthcare_access_id INT PRIMARY KEY,
-                any_healthcare_coverage DECIMAL(3,1) NOT NULL,
-                no_doctor_due_to_cost DECIMAL(3,1) NOT NULL,
+                any_healthcare_coverage VARCHAR(10) NOT NULL,
+                no_doctor_due_to_cost VARCHAR(10) NOT NULL,
                 INDEX idx_healthcare_coverage (any_healthcare_coverage),
                 INDEX idx_doctor_cost (no_doctor_due_to_cost)
             ) ENGINE=InnoDB
@@ -93,7 +87,7 @@ def create_tables():
             """
             CREATE TABLE fact_health_records (
                 record_id BIGINT PRIMARY KEY,
-                diabetes_status DECIMAL(3,1) NOT NULL,
+                diabetes_status VARCHAR(20) NOT NULL,
                 bmi_value DECIMAL(5,2) NOT NULL,
                 mental_health_days DECIMAL(3,1) NOT NULL,
                 physical_health_days DECIMAL(3,1) NOT NULL,
@@ -123,7 +117,6 @@ def create_tables():
     except mysql.connector.Error as err:
         logging.error(f"Error creating tables: {err}")
         raise
-
 
 class MySQLLoader:
     def __init__(self, host=None, port=None, user=None, password=None, database=None):

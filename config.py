@@ -26,11 +26,11 @@ FEATURE_CATEGORIES = {
 }
 
 # Target variable information
-TARGET_VARIABLE = 'Diabetes_012'
+TARGET_VARIABLE = 'diabetes_status'
 TARGET_CLASSES = {
-    0: 'No diabetes',
-    1: 'Pre-diabetes', 
-    2: 'Diabetes'
+    0: 'Healthy',
+    1: 'Pre-diabetic', 
+    2: 'Diabetic'
 }
 
 # Expected dataset dimensions after processing

@@ -2,7 +2,6 @@ import sys
 import os
 import mysql.connector
 from mysql.connector import Error
-import pandas as pd
 
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
@@ -54,7 +53,6 @@ def connect_to_database():
         print(f"Error connecting to MySQL: {str(e)}")
         return None
 
-
 def main():
     print("=" * 60)
     print("DIABETES ETL PIPELINE")
@@ -70,11 +68,10 @@ def main():
         print("Transformation completed")
         
         print("\nClass distribution:")
-        class_counts = df_clean['Diabetes_012'].value_counts().sort_index()
+        class_counts = df_clean['diabetes_status'].value_counts()
         for class_val, count in class_counts.items():
-            class_name = {0: "No diabetes", 1: "Pre-diabetes", 2: "Diabetes"}[class_val]
             percentage = (count / len(df_clean)) * 100
-            print(f"  - {class_name}: {count:,} ({percentage:.1f}%)")
+            print(f"  - {class_val}: {count:,} ({percentage:.1f}%)")
         
         print("\n[3] DIMENSIONAL MODELING")
         tables = dimensional_model(df_clean)
@@ -87,7 +84,7 @@ def main():
         connection = connect_to_database()
         if not connection:
             raise Exception("Failed to connect to database")
-        print(f"✅ Connected to {DB_CONFIG['database']}")
+        print(f"Connected to {DB_CONFIG['database']}")
         
         # Step 5: Loading
         print("\n[5] LOADING TO MYSQL")
@@ -114,7 +111,6 @@ def main():
     except Exception as e:
         print(f"\nError during ETL: {str(e)}")
         return None
-
 
 if __name__ == "__main__":
     result = main()

@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 import os
 import sys
 import logging
@@ -65,7 +64,7 @@ def create_fact_health_records(df: pd.DataFrame, dim_demographics: pd.DataFrame,
     # Create fact table
     fact_df = pd.DataFrame({
         'record_id': range(1, len(df) + 1),
-        'diabetes_status': df['Diabetes_012'],
+        'diabetes_status': df['diabetes_status'],
         'bmi_value': df['BMI'],
         'mental_health_days': df['MentHlth'],
         'physical_health_days': df['PhysHlth'],
@@ -174,23 +173,68 @@ def dimensional_model(df_clean):
     }, inplace=True)
     
     # Create mapping dictionaries for fact table
-    demo_mapping = df_clean[demo_cols].merge(demo_df, left_on=demo_cols, right_on=['sex', 'age_group', 'education_level', 'income_bracket'])
-    lifestyle_mapping = df_clean[lifestyle_cols].merge(lifestyle_df, left_on=lifestyle_cols, right_on=['smoker_status', 'physical_activity', 'fruits_consumption', 'vegetables_consumption', 'heavy_alcohol_consumption'])
-    medical_mapping = df_clean[medical_cols].merge(medical_df, left_on=medical_cols, right_on=['high_blood_pressure', 'high_cholesterol', 'cholesterol_check', 'stroke_history', 'heart_disease_or_attack', 'difficulty_walking'])
-    healthcare_mapping = df_clean[healthcare_cols].merge(healthcare_df, left_on=healthcare_cols, right_on=['any_healthcare_coverage', 'no_doctor_due_to_cost'])
+    # Demographics mapping
+    demo_mapping_dict = {}
+    for idx, row in demo_df.iterrows():
+        key = (row['sex'], row['age_group'], row['education_level'], row['income_bracket'])
+        demo_mapping_dict[key] = row['demographic_id']
+    
+    # Apply demographics mapping
+    demo_ids = []
+    for idx, row in df_clean.iterrows():
+        key = (row['Sex'], row['Age'], row['Education'], row['Income'])
+        demo_ids.append(demo_mapping_dict[key])
+    
+    # Lifestyle mapping
+    lifestyle_mapping_dict = {}
+    for idx, row in lifestyle_df.iterrows():
+        key = (row['smoker_status'], row['physical_activity'], row['fruits_consumption'], 
+               row['vegetables_consumption'], row['heavy_alcohol_consumption'])
+        lifestyle_mapping_dict[key] = row['lifestyle_id']
+    
+    # Apply lifestyle mapping
+    lifestyle_ids = []
+    for idx, row in df_clean.iterrows():
+        key = (row['Smoker'], row['PhysActivity'], row['Fruits'], row['Veggies'], row['HvyAlcoholConsump'])
+        lifestyle_ids.append(lifestyle_mapping_dict[key])
+    
+    # Medical conditions mapping
+    medical_mapping_dict = {}
+    for idx, row in medical_df.iterrows():
+        key = (row['high_blood_pressure'], row['high_cholesterol'], row['cholesterol_check'], 
+               row['stroke_history'], row['heart_disease_or_attack'], row['difficulty_walking'])
+        medical_mapping_dict[key] = row['medical_conditions_id']
+    
+    # Apply medical mapping
+    medical_ids = []
+    for idx, row in df_clean.iterrows():
+        key = (row['HighBP'], row['HighChol'], row['CholCheck'], row['Stroke'], row['HeartDiseaseorAttack'], row['DiffWalk'])
+        medical_ids.append(medical_mapping_dict[key])
+    
+    # Healthcare access mapping
+    healthcare_mapping_dict = {}
+    for idx, row in healthcare_df.iterrows():
+        key = (row['any_healthcare_coverage'], row['no_doctor_due_to_cost'])
+        healthcare_mapping_dict[key] = row['healthcare_access_id']
+    
+    # Apply healthcare mapping
+    healthcare_ids = []
+    for idx, row in df_clean.iterrows():
+        key = (row['AnyHealthcare'], row['NoDocbcCost'])
+        healthcare_ids.append(healthcare_mapping_dict[key])
     
     # Create Fact Table
     fact_df = pd.DataFrame({
         'record_id': range(1, len(df_clean) + 1),
-        'diabetes_status': df_clean['Diabetes_012'].astype(float),
+        'diabetes_status': df_clean['diabetes_status'].astype(str),
         'bmi_value': df_clean['BMI'].astype(float),
         'mental_health_days': df_clean['MentHlth'].astype(float), 
         'physical_health_days': df_clean['PhysHlth'].astype(float),
         'general_health_score': df_clean['GenHlth'].astype(float),
-        'demographic_id': demo_mapping['demographic_id'].values,
-        'lifestyle_id': lifestyle_mapping['lifestyle_id'].values,
-        'medical_conditions_id': medical_mapping['medical_conditions_id'].values,
-        'healthcare_access_id': healthcare_mapping['healthcare_access_id'].values
+        'demographic_id': demo_ids,
+        'lifestyle_id': lifestyle_ids,
+        'medical_conditions_id': medical_ids,
+        'healthcare_access_id': healthcare_ids
     })
     
     tables = {
@@ -231,28 +275,28 @@ def main():
         print(f"   Columns: {list(df.columns)}")
         
         # Create dimensional tables
-        print(f"\n🏗️  Creating Dimensional Tables...")
+        print(f"\nCreating Dimensional Tables...")
         
         dim_demographics = create_dim_demographics(df)
-        print(f"✅ Demographics: {len(dim_demographics)} unique combinations")
+        print(f"Demographics: {len(dim_demographics)} unique combinations")
         
         dim_lifestyle = create_dim_lifestyle(df)
-        print(f"✅ Lifestyle: {len(dim_lifestyle)} unique combinations")
+        print(f"Lifestyle: {len(dim_lifestyle)} unique combinations")
         
         dim_medical_conditions = create_dim_medical_conditions(df)
-        print(f"✅ Medical Conditions: {len(dim_medical_conditions)} unique combinations")
+        print(f"Medical Conditions: {len(dim_medical_conditions)} unique combinations")
         
         dim_healthcare_access = create_dim_healthcare_access(df)
-        print(f"✅ Healthcare Access: {len(dim_healthcare_access)} unique combinations")
+        print(f"Healthcare Access: {len(dim_healthcare_access)} unique combinations")
         
         # Create fact table
-        print(f"\n📊 Creating Fact Table...")
+        print(f"\nCreating Fact Table...")
         fact_health_records = create_fact_health_records(df, dim_demographics, dim_lifestyle,
                                                        dim_medical_conditions, dim_healthcare_access)
-        print(f"✅ Fact Health Records: {len(fact_health_records)} records")
+        print(f"Fact Health Records: {len(fact_health_records)} records")
         
         # Save dimensional tables
-        print(f"\n💾 Saving Dimensional Tables...")
+        print(f"\nSaving Dimensional Tables...")
         output_dir = os.path.join('..', 'data', 'processed')
         save_dimensional_tables(output_dir, dim_demographics, dim_lifestyle, 
                                dim_medical_conditions, dim_healthcare_access, fact_health_records)
@@ -262,7 +306,7 @@ def main():
                           dim_healthcare_access, fact_health_records)
         
         print(f"\n" + "=" * 60)
-        print("DIMENSIONAL ETL COMPLETED SUCCESSFULLY! 🎉")
+        print("DIMENSIONAL ETL COMPLETED SUCCESSFULLY!")
         print("=" * 60)
         
         print(f"\nOutput Files:")
@@ -275,7 +319,7 @@ def main():
         logging.info("Dimensional ETL completed successfully")
         
     except Exception as e:
-        error_msg = f"❌ Error during dimensional ETL: {str(e)}"
+        error_msg = f"Error during dimensional ETL: {str(e)}"
         print(f"\n{error_msg}")
         logging.error(error_msg, exc_info=True)
         sys.exit(1)

@@ -1,7 +1,6 @@
 import pandas as pd
 import logging
 
-
 def clean_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     initial_rows = len(df)
     df = df.dropna()
@@ -11,24 +10,23 @@ def clean_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     )
     return df
 
-
 def transform_diabetes_variable(df: pd.DataFrame) -> pd.DataFrame:
-    diabetes_mapping = {1: 2, 2: 1, 3: 0}  # 1=Yes -> 2, 2=No -> 1, 3=PreDiabetes -> 0
-    
+    diabetes_mapping = {1: "Diabetic", 2: "Healthy", 3: "Prediabetic"}
+
     if 'DIABETE3' in df.columns:
-        # Mostrar valores únicos antes de transformar
+        # Show unique values before transformation
         unique_vals = sorted(df['DIABETE3'].dropna().unique())
         logging.info(f"DIABETE3 - unique values before transformation: {unique_vals}")
-        
-        # Filtrar solo valores válidos (1, 2, 3) antes de mapear
+
+        # Filter only valid values (1, 2, 3) before mapping
         initial_rows = len(df)
-        df = df[df['DIABETE3'].isin([1, 2, 3])]
+        df = df[df['DIABETE3'].isin([1, 2, 3])].copy()
         filtered_rows = len(df)
-        
-        # Aplicar mapeo
+
+        # Apply mapping to descriptive strings
         df['DIABETE3'] = df['DIABETE3'].map(diabetes_mapping)
-        
-        # Mostrar resultado
+
+        # Show result
         final_vals = sorted(df['DIABETE3'].dropna().unique())
         logging.info(f"DIABETE3 - unique values after transformation: {final_vals}")
         logging.info(f"Diabetes variable transformation: {initial_rows} -> {filtered_rows} rows "
@@ -36,7 +34,6 @@ def transform_diabetes_variable(df: pd.DataFrame) -> pd.DataFrame:
         logging.info(f"Diabetes variable distribution: {df['DIABETE3'].value_counts().to_dict()}")
     
     return df
-
 
 def transform_binary_variables(df: pd.DataFrame) -> pd.DataFrame:
     binary_columns = [
@@ -49,15 +46,37 @@ def transform_binary_variables(df: pd.DataFrame) -> pd.DataFrame:
     
     for col in binary_columns:
         if col in df.columns:
-            # Mostrar valores únicos antes de filtrar
+            # Show unique values before filtering
             unique_vals = sorted(df[col].dropna().unique())
             logging.info(f"Column {col} - unique values before cleaning: {unique_vals}")
+
+            # Check if values are binary (0,1) or (1,2)
+            valid_values = set(df[col].dropna().unique())
             
-            # Filtrar solo valores válidos (1 y 2) y mapear 2 -> 0
-            df = df[df[col].isin([1, 2])]
-            df[col] = df[col].replace({2: 0})
+            if valid_values.issubset({0, 1}):
+                # Already in 0,1 format - convert to string
+                df = df[df[col].isin([0, 1])].copy()
+                df[col] = df[col].map({0: "No", 1: "Yes"})
+                logging.info(f"Column {col} - converted from 0,1 to No,Yes")
+                
+            elif valid_values.issubset({1, 2}):
+                df = df[df[col].isin([1, 2])].copy()
+                df[col] = df[col].replace({2: 0}).map({0: "No", 1: "Yes"})
+                logging.info(f"Column {col} - converted from 1,2 to No,Yes")
+
+            else:
+                if {0, 1}.issubset(valid_values):
+                    df = df[df[col].isin([0, 1])].copy() 
+                    df[col] = df[col].map({0: "No", 1: "Yes"})
+                    logging.info(f"Column {col} - filtered to 0,1 and converted to No,Yes")
+                elif {1, 2}.issubset(valid_values):
+                    df = df[df[col].isin([1, 2])].copy() 
+                    df[col] = df[col].replace({2: 0}).map({0: "No", 1: "Yes"})
+                    logging.info(f"Column {col} - filtered to 1,2 and converted to No,Yes")
+                else:
+                    logging.warning(f"Column {col} - No valid binary pattern found: {valid_values}")
+                    continue
             
-            # Verificar resultado
             final_vals = sorted(df[col].dropna().unique())
             logging.info(f"Column {col} - unique values after cleaning: {final_vals}")
             
@@ -82,22 +101,22 @@ def clean_ordinal_variables(df: pd.DataFrame) -> pd.DataFrame:
         '_AGEG5YR': list(range(1, 14)),
         'EDUCA': list(range(1, 7)),
         'INCOME2': list(range(1, 9)),
-        'MENTHLTH': list(range(0, 31)),  # Days 0-30
-        'PHYSHLTH': list(range(0, 31))   # Days 0-30
+        'MENTHLTH': list(range(0, 31)),
+        'PHYSHLTH': list(range(0, 31))
     }
     
     initial_rows = len(df)
     
     for col, valid_values in ordinal_columns.items():
         if col in df.columns:
-            # Mostrar valores únicos antes de limpiar
+            # Show unique values before cleaning
             unique_vals = sorted(df[col].dropna().unique())
             logging.info(f"Column {col} - unique values before cleaning: {unique_vals[:10]}...")
+
+            # Filter only valid values
+            df = df[df[col].isin(valid_values)].copy()
             
-            # Filtrar solo valores válidos
-            df = df[df[col].isin(valid_values)]
-            
-            # Mostrar valores finales
+            # Show final values
             final_vals = sorted(df[col].dropna().unique())
             logging.info(f"Column {col} - unique values after cleaning: {final_vals[:10]}...")
     
@@ -107,10 +126,9 @@ def clean_ordinal_variables(df: pd.DataFrame) -> pd.DataFrame:
     
     return df
 
-
 def transform_sex_variable(df: pd.DataFrame) -> pd.DataFrame:
     if 'SEX' in df.columns:
-        sex_mapping = {1: 'Masculino', 2: 'Femenino'}
+        sex_mapping = {1: 'Male', 2: 'Female'}
         df['SEX'] = df['SEX'].map(sex_mapping)
         logging.info(
             f"Sex variable distribution: {df['SEX'].value_counts().to_dict()}"
@@ -124,7 +142,7 @@ def transform_sex_variable(df: pd.DataFrame) -> pd.DataFrame:
 
 def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
     column_mapping = {
-        'DIABETE3': 'Diabetes_012',
+        'DIABETE3': 'diabetes_status',
         '_RFHYPE5': 'HighBP',
         'TOLDHI2': 'HighChol',
         '_CHOLCHK': 'CholCheck',
@@ -147,37 +165,35 @@ def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
         'EDUCA': 'Education',
         'INCOME2': 'Income'
     }
+
     df = df.rename(columns=column_mapping)
     logging.info("Renamed columns to human-readable format")
     return df
 
 
 def validate_final_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Validación final para asegurar que todos los datos están en el rango correcto
-    """
+
     logging.info("Starting final data validation...")
     
-    # Definir rangos válidos para cada columna
     expected_ranges = {
-        'Diabetes_012': [0, 1, 2],
-        'HighBP': [0, 1],
-        'HighChol': [0, 1], 
-        'CholCheck': [0, 1],
-        'Smoker': [0, 1],
-        'Stroke': [0, 1],
-        'HeartDiseaseorAttack': [0, 1],
-        'PhysActivity': [0, 1],
-        'Fruits': [0, 1],
-        'Veggies': [0, 1],
-        'HvyAlcoholConsump': [0, 1],
-        'AnyHealthcare': [0, 1],
-        'NoDocbcCost': [0, 1],
-        'DiffWalk': [0, 1],
+        'diabetes_status': ["Diabetic", "Healthy", "Prediabetic"],
+        'HighBP': ["No", "Yes"],
+        'HighChol': ["No", "Yes"],
+        'CholCheck': ["No", "Yes"],
+        'Smoker': ["No", "Yes"],
+        'Stroke': ["No", "Yes"],
+        'HeartDiseaseorAttack': ["No", "Yes"],
+        'PhysActivity': ["No", "Yes"],
+        'Fruits': ["No", "Yes"],
+        'Veggies': ["No", "Yes"],
+        'HvyAlcoholConsump': ["No", "Yes"],
+        'AnyHealthcare': ["No", "Yes"],
+        'NoDocbcCost': ["No", "Yes"],
+        'DiffWalk': ["No", "Yes"],
         'GenHlth': [1, 2, 3, 4, 5],
         'MentHlth': list(range(0, 31)),
         'PhysHlth': list(range(0, 31)),
-        'Sex': ['Masculino', 'Femenino'],
+        'Sex': ['Male', 'Female'],
         'Age': list(range(1, 14)),
         'Education': list(range(1, 7)),
         'Income': list(range(1, 9))
@@ -188,10 +204,12 @@ def validate_final_data(df: pd.DataFrame) -> pd.DataFrame:
     
     for col, valid_values in expected_ranges.items():
         if col in df.columns:
-            # Encontrar valores inválidos
-            if col in ['Sex']:  # Columnas de texto
+            
+            if col in ['Sex', 'diabetes_status', 'HighBP', 'HighChol', 'CholCheck', 'Smoker', 'Stroke', 
+                      'HeartDiseaseorAttack', 'PhysActivity', 'Fruits', 'Veggies', 'HvyAlcoholConsump', 
+                      'AnyHealthcare', 'NoDocbcCost', 'DiffWalk']:
                 invalid_mask = ~df[col].isin(valid_values)
-            else:  # Columnas numéricas
+            else:  # Numeric columns
                 invalid_mask = ~df[col].isin(valid_values)
                 
             invalid_count = invalid_mask.sum()
@@ -201,8 +219,8 @@ def validate_final_data(df: pd.DataFrame) -> pd.DataFrame:
                 validation_issues.append(f"{col}: {invalid_count} invalid values {list(unique_invalid)}")
                 logging.warning(f"Found {invalid_count} invalid values in {col}: {list(unique_invalid)}")
                 
-                # Remover filas con valores inválidos
-                df = df[~invalid_mask]
+                # Remove rows with invalid values
+                df = df[~invalid_mask].copy()
     
     final_rows = len(df)
     
@@ -210,23 +228,26 @@ def validate_final_data(df: pd.DataFrame) -> pd.DataFrame:
         logging.warning(f"Data validation found issues: {validation_issues}")
         logging.info(f"Removed {initial_rows - final_rows} rows with invalid values")
     else:
-        logging.info("✅ All data values are within expected ranges")
+        logging.info("All data values are within expected ranges")
     
-    # Verificación final
     logging.info("Final data validation summary:")
     for col in df.columns:
         if col in expected_ranges:
-            unique_vals = sorted(df[col].unique()) if col != 'Sex' else df[col].unique()
+            if col in ['Sex', 'diabetes_status', 'HighBP', 'HighChol', 'CholCheck', 'Smoker', 'Stroke', 
+                      'HeartDiseaseorAttack', 'PhysActivity', 'Fruits', 'Veggies', 'HvyAlcoholConsump', 
+                      'AnyHealthcare', 'NoDocbcCost', 'DiffWalk']:
+                unique_vals = df[col].unique()
+            else:
+                unique_vals = sorted(df[col].unique())
             logging.info(f"  {col}: {list(unique_vals)}")
     
     logging.info(f"Final validated dataset: {df.shape}")
     return df
 
-
 def full_transformation_pipeline(df: pd.DataFrame) -> pd.DataFrame:
     logging.info("Starting full transformation pipeline")
 
-    if 'Diabetes_012' in df.columns:
+    if 'diabetes_status' in df.columns:
         logging.info("Data already in final format. Applying validation only.")
         return validate_final_data(df)
 
@@ -237,7 +258,7 @@ def full_transformation_pipeline(df: pd.DataFrame) -> pd.DataFrame:
     df = clean_ordinal_variables(df)
     df = transform_sex_variable(df)
     df = rename_columns(df)
-    df = validate_final_data(df)  # Validación final
+    df = validate_final_data(df)
 
     logging.info(f"Transformation pipeline completed. Final shape: {df.shape}")
     return df

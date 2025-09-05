@@ -2,7 +2,6 @@ import pandas as pd
 import logging
 import os
 
-
 def extract_data(file_path: str, year: str = '2015') -> pd.DataFrame:
     try:
         df = pd.read_csv(file_path)
@@ -12,10 +11,9 @@ def extract_data(file_path: str, year: str = '2015') -> pd.DataFrame:
         logging.error(f"Error extracting BRFSS data from {file_path}: {e}")
         raise
 
-
 def select_diabetes_features(df: pd.DataFrame) -> pd.DataFrame:
 
-    priority_columns = [
+    desired_columns = [
         "DIABETE3",  # Target variable
         "_RFHYPE5",  # High blood pressure
         "_BMI5",  # BMI
@@ -24,9 +22,6 @@ def select_diabetes_features(df: pd.DataFrame) -> pd.DataFrame:
         "GENHLTH",  # General health
         "SEX",
         "_AGEG5YR",  # Demographics
-    ]
-
-    additional_columns = [
         "TOLDHI2",
         "_CHOLCHK",  # Cholesterol
         "CVDSTRK3",
@@ -42,8 +37,6 @@ def select_diabetes_features(df: pd.DataFrame) -> pd.DataFrame:
         "EDUCA",
         "INCOME2",  # Demographics
     ]
-
-    desired_columns = priority_columns + additional_columns
 
     available_columns = [col for col in desired_columns if col in df.columns]
     missing_columns = [col for col in desired_columns if col not in df.columns]
@@ -68,36 +61,7 @@ def select_diabetes_features(df: pd.DataFrame) -> pd.DataFrame:
     return df_selected
 
 
-def load_raw_brfss_data(data_dir: str = "data/raw", year: str = "2015") -> pd.DataFrame:
-    """
-    Load a single year's BRFSS dataset and select diabetes features.
-
-    Args:
-        data_dir (str): Directory containing the raw CSV file.
-        year (str): Year of the dataset.
-
-    Returns:
-        pd.DataFrame: Processed dataset.
-    """
-    file_path = os.path.join(data_dir, f"{year}.csv")
-
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Raw BRFSS data not found: {file_path}")
-
-    df = extract_data(file_path, year)
-    return select_diabetes_features(df)
-
-
 def load_all_brfss_data(data_dir: str = "data/raw") -> pd.DataFrame:
-    """
-    Load and combine all available BRFSS datasets from multiple years.
-
-    Args:
-        data_dir (str): Directory containing multiple CSV files.
-
-    Returns:
-        pd.DataFrame: Combined dataset from all years.
-    """
     if not os.path.exists(data_dir):
         raise FileNotFoundError(f"Data directory not found: {data_dir}")
 
@@ -142,8 +106,20 @@ def load_all_brfss_data(data_dir: str = "data/raw") -> pd.DataFrame:
 
     return combined_df
 
-
-def load_raw_data(data_dir: str = "data/raw", load_all_years: bool = True) -> pd.DataFrame:
-    return load_all_brfss_data(data_dir) if load_all_years else load_raw_brfss_data(
-        data_dir, "2015"
-    )
+def load_raw_data(data_dir: str = "data/raw", load_all_years: bool = False, sample_size: int = None) -> pd.DataFrame:
+    if load_all_years:
+        return load_all_brfss_data(data_dir)
+    else:
+        # Load only 2015 data
+        file_path = os.path.join(data_dir, "2015.csv")
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Raw BRFSS data not found: {file_path}")
+        
+        # If sample_size is specified, read only that many rows
+        if sample_size:
+            df = pd.read_csv(file_path, nrows=sample_size)
+            logging.info(f"BRFSS 2015 sample data extracted successfully: {sample_size} rows")
+        else:
+            df = extract_data(file_path, "2015")
+        
+        return select_diabetes_features(df)
