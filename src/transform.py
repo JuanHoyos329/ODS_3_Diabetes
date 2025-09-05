@@ -11,7 +11,7 @@ def clean_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def transform_diabetes_variable(df: pd.DataFrame) -> pd.DataFrame:
-    diabetes_mapping = {1: "Diabetic", 2: "Healthy", 3: "Prediabetic"}
+    diabetes_mapping = {1: "Diabetic", 3: "Healthy", 2: "Prediabetic"}
 
     if 'DIABETE3' in df.columns:
         # Show unique values before transformation
