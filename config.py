@@ -37,12 +37,12 @@ TARGET_CLASSES = {
 EXPECTED_FINAL_ROWS = 253680
 EXPECTED_FINAL_COLS = 22
 
-# MySQL Database Configuration
-DB_CONFIG = {
+# MySQL Database Configuration for Child Mortality
+DB_CONFIG_MORTALITY = {
     "host": "localhost",
     "user": "root",
     "password": "root",
-    "database": "diabetesDB",
+    "database": "child_mortality_db",
     "port": 3306,
 }
 
@@ -53,6 +53,14 @@ DB_TABLES = {
     'dim_medical_conditions': 'dim_medical_conditions',
     'dim_healthcare_access': 'dim_healthcare_access',
     'fact_health_records': 'fact_health_records'
+}
+
+# Database tables for Child Mortality
+DB_TABLES_MORTALITY = {
+    'dim_time': 'dim_time',
+    'dim_mortality_indicators': 'dim_mortality_indicators',
+    'dim_socioeconomic_indicators': 'dim_socioeconomic_indicators',
+    'fact_child_health': 'fact_child_health'
 }
 
 # Database views

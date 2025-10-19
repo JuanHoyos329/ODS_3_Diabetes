@@ -2,124 +2,125 @@ import pandas as pd
 import logging
 import os
 
-def extract_data(file_path: str, year: str = '2015') -> pd.DataFrame:
+def load_child_mortality_data(file_path: str = "data/raw/child_mortality_indicators_col.csv") -> pd.DataFrame:
+    
     try:
-        df = pd.read_csv(file_path)
-        logging.info(f"BRFSS {year} data extracted successfully")
+        # Verificar que el archivo existe
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Archivo no encontrado: {file_path}")
+        
+        # Leer CSV, saltando la primera fila que contiene metadatos
+        df = pd.read_csv(file_path, skiprows=[1])
+        
+        logging.info(f"[OK] Datos de mortalidad infantil cargados exitosamente")
+        logging.info(f"  - Archivo: {file_path}")
+        logging.info(f"  - Registros: {len(df):,}")
+        logging.info(f"  - Columnas: {len(df.columns)}")
+        
+        # Mostrar información básica del dataset
+        if 'Period' in df.columns:
+            years = df['Period'].dropna().unique()
+            logging.info(f"  - Años disponibles: {len(years)} ({min(years)} - {max(years)})")
+        
         return df
+        
+    except FileNotFoundError as e:
+        logging.error(f"[ERROR] Archivo no encontrado: {e}")
+        raise
     except Exception as e:
-        logging.error(f"Error extracting BRFSS data from {file_path}: {e}")
+        logging.error(f"[ERROR] Error al cargar datos de mortalidad: {e}")
         raise
 
-def select_diabetes_features(df: pd.DataFrame) -> pd.DataFrame:
 
-    desired_columns = [
-        "DIABETE3",  # Target variable
-        "_RFHYPE5",  # High blood pressure
-        "_BMI5",  # BMI
-        "SMOKE100",  # Smoking
-        "_TOTINDA",  # Physical activity
-        "GENHLTH",  # General health
-        "SEX",
-        "_AGEG5YR",  # Demographics
-        "TOLDHI2",
-        "_CHOLCHK",  # Cholesterol
-        "CVDSTRK3",
-        "_MICHD",  # Heart conditions
-        "_FRTLT1",
-        "_VEGLT1",  # Diet
-        "_RFDRHV5",  # Heavy alcohol consumption
-        "HLTHPLN1",
-        "MEDCOST",  # Healthcare access
-        "MENTHLTH",
-        "PHYSHLTH",
-        "DIFFWALK",  # Health status
-        "EDUCA",
-        "INCOME2",  # Demographics
-    ]
-
-    available_columns = [col for col in desired_columns if col in df.columns]
-    missing_columns = [col for col in desired_columns if col not in df.columns]
-
-    if not available_columns:
-        raise ValueError("No diabetes-related columns found in dataset")
-
-    if "DIABETE3" not in available_columns:
-        raise ValueError("Target variable 'DIABETE3' not found in dataset")
-
-    if missing_columns:
-        logging.warning(f"Missing columns: {missing_columns}")
-
-    logging.info(
-        f"Selected {len(available_columns)} features "
-        f"(from {len(desired_columns)} desired)."
-    )
-
-    df_selected = df[available_columns].copy()
-    logging.info(f"Dataset shape after feature selection: {df_selected.shape}")
-
-    return df_selected
-
-
-def load_all_brfss_data(data_dir: str = "data/raw") -> pd.DataFrame:
-    if not os.path.exists(data_dir):
-        raise FileNotFoundError(f"Data directory not found: {data_dir}")
-
-    csv_files = [
-        f for f in os.listdir(data_dir) if f.endswith(".csv") and f[:-4].isdigit()
-    ]
-    years = [f[:-4] for f in csv_files]
-
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in {data_dir}")
-
-    logging.info(f"Found {len(csv_files)} CSV files for years: {', '.join(sorted(years))}")
-
-    all_dataframes = []
-    total_rows = 0
-
-    for file, year in zip(csv_files, years):
-        file_path = os.path.join(data_dir, file)
-        try:
-            df = extract_data(file_path, year)
-            df_selected = select_diabetes_features(df)
-            df_selected["DATA_YEAR"] = int(year)
-
-            all_dataframes.append(df_selected)
-            total_rows += len(df_selected)
-
-            logging.info(f"Loaded {year}: {len(df_selected)} rows")
-        except Exception as e:
-            logging.warning(f"Failed to load {year}: {e}")
-            continue
-
-    if not all_dataframes:
-        raise RuntimeError("No datasets could be loaded successfully")
-
-    combined_df = pd.concat(all_dataframes, ignore_index=True)
-
-    logging.info(
-        f"Combined {len(all_dataframes)} datasets: "
-        f"{len(combined_df)} rows, {len(combined_df.columns)} columns"
-    )
-    logging.info(f"Years included: {sorted(combined_df['DATA_YEAR'].unique())}")
-
-    return combined_df
-
-def load_raw_data(data_dir: str = "data/raw", load_all_years: bool = False, sample_size: int = None) -> pd.DataFrame:
-    if load_all_years:
-        return load_all_brfss_data(data_dir)
-    else:
-        # Load only 2015 data
-        file_path = os.path.join(data_dir, "2015.csv")
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Raw BRFSS data not found: {file_path}")
+def extract_socioeconomic_data_from_api(
+    country_code: str = "COL",
+    start_year: int = 1950,
+    end_year: int = 2022,
+    indicators: list = None
+) -> pd.DataFrame:
+    
+    import requests
+    import time
+    
+    try:
+        # Indicadores socioeconómicos predefinidos del Banco Mundial
+        if indicators is None:
+            indicators = {
+                'SP.POP.TOTL': 'population_total',           # Población total
+                'NY.GDP.PCAP.CD': 'gdp_per_capita',          # PIB per cápita
+                'SI.POV.NAHC': 'poverty_headcount_ratio',    # Tasa de pobreza
+                'SE.PRM.ENRR': 'school_enrollment_primary',  # Matriculación primaria
+                'SP.DYN.CDRT.IN': 'mortality_rate',          # Tasa de mortalidad infantil
+                'SP.URB.TOTL.IN.ZS': 'urban_population_percent'  # % población urbana
+            }
         
-        # If sample_size is specified, read only that many rows
-        if sample_size:
-            df = pd.read_csv(file_path, nrows=sample_size)
-            logging.info(f"BRFSS 2015 sample data extracted successfully: {sample_size} rows")
-        else:
-            df = extract_data(file_path, "2015")
+        logging.info(f"Consultando API del Banco Mundial...")
+        logging.info(f"  - País: {country_code}")
+        logging.info(f"  - Periodo: {start_year}-{end_year}")
+        logging.info(f"  - Indicadores: {len(indicators)}")
         
-        return select_diabetes_features(df)
+        all_data = []
+        
+        # Consultar cada indicador
+        for indicator_code, indicator_name in indicators.items():
+            url = f"https://api.worldbank.org/v2/country/{country_code}/indicator/{indicator_code}"
+            params = {
+                'date': f'{start_year}:{end_year}',
+                'format': 'json',
+                'per_page': 500
+            }
+            
+            try:
+                response = requests.get(url, params=params, timeout=30)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                # La API devuelve [metadata, datos]
+                if len(data) > 1 and data[1]:
+                    for record in data[1]:
+                        all_data.append({
+                            'year': int(record['date']),
+                            'indicator': indicator_name,
+                            'value': record['value']
+                        })
+                    
+                    logging.info(f"  [OK] {indicator_name}: {len(data[1])} registros")
+                else:
+                    logging.warning(f"  [!] {indicator_name}: Sin datos")
+                
+                # Pequeña pausa para no saturar la API
+                time.sleep(0.5)
+                
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"  [X] Error consultando {indicator_name}: {e}")
+                continue
+        
+        # Convertir a DataFrame
+        if not all_data:
+            logging.warning("No se obtuvieron datos de la API")
+            return pd.DataFrame()
+        
+        df = pd.DataFrame(all_data)
+        
+        # Pivotar para tener un indicador por columna
+        df_pivot = df.pivot(index='year', columns='indicator', values='value').reset_index()
+        
+        logging.info(f"[OK] Datos socioeconomicos extraidos exitosamente")
+        logging.info(f"  - Años únicos: {len(df_pivot)}")
+        logging.info(f"  - Indicadores: {len(df_pivot.columns) - 1}")
+        
+        return df_pivot
+        
+    except Exception as e:
+        logging.error(f"[ERROR] Error extrayendo datos de API: {e}")
+        raise
+
+
+def extract_colombian_socioeconomic_data() -> pd.DataFrame:
+    
+    logging.info("Función plantilla: extract_colombian_socioeconomic_data()")
+    logging.info("Se recomienda usar extract_socioeconomic_data_from_api() para datos del Banco Mundial")
+    
+    # Retornar DataFrame vacío como placeholder
+    return pd.DataFrame()

@@ -1,328 +1,276 @@
 import pandas as pd
-import os
-import sys
 import logging
-from datetime import datetime
+import os
 
-from utils import setup_logging, ensure_directory_exists
-
-def load_diabetes_dataset(file_path: str) -> pd.DataFrame:
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"Dataset not found at: {file_path}")
+def create_dim_time(df: pd.DataFrame) -> pd.DataFrame:
     
-    try:
-        df = pd.read_csv(file_path)
-        logging.info(f"Successfully loaded dataset: {df.shape[0]} rows, {df.shape[1]} columns")
-        return df
-    except Exception as e:
-        logging.error(f"Error loading dataset: {str(e)}")
-        raise
-
-def create_dim_demographics(df: pd.DataFrame) -> pd.DataFrame:
-    demo_cols = ['Sex', 'Age', 'Education', 'Income']
-    demo_df = df[demo_cols].drop_duplicates().reset_index(drop=True)
-    demo_df['demographic_id'] = range(1, len(demo_df) + 1)
-    return demo_df
-
-def create_dim_lifestyle(df: pd.DataFrame) -> pd.DataFrame:
-    lifestyle_cols = ['Smoker', 'PhysActivity', 'Fruits', 'Veggies', 'HvyAlcoholConsump']
-    lifestyle_df = df[lifestyle_cols].drop_duplicates().reset_index(drop=True)
-    lifestyle_df['lifestyle_id'] = range(1, len(lifestyle_df) + 1)
-    return lifestyle_df
-
-def create_dim_medical_conditions(df: pd.DataFrame) -> pd.DataFrame:
-    medical_cols = ['HighBP', 'HighChol', 'Stroke', 'HeartDiseaseorAttack']
-    medical_df = df[medical_cols].drop_duplicates().reset_index(drop=True)
-    medical_df['medical_conditions_id'] = range(1, len(medical_df) + 1)
-    return medical_df
-
-def create_dim_healthcare_access(df: pd.DataFrame) -> pd.DataFrame:
-    healthcare_cols = ['AnyHealthcare', 'NoDocbcCost', 'CholCheck']
-    healthcare_df = df[healthcare_cols].drop_duplicates().reset_index(drop=True)
-    healthcare_df['healthcare_access_id'] = range(1, len(healthcare_df) + 1)
-    return healthcare_df
-
-def create_fact_health_records(df: pd.DataFrame, dim_demographics: pd.DataFrame, 
-                             dim_lifestyle: pd.DataFrame, dim_medical_conditions: pd.DataFrame, 
-                             dim_healthcare_access: pd.DataFrame) -> pd.DataFrame:
-    # Create mapping for demographics
-    demo_cols = ['Sex', 'Age', 'Education', 'Income']
-    demo_mapping = df[demo_cols].merge(dim_demographics, on=demo_cols, how='left')['demographic_id']
+    logging.info("Creating time dimension")
     
-    # Create mapping for lifestyle
-    lifestyle_cols = ['Smoker', 'PhysActivity', 'Fruits', 'Veggies', 'HvyAlcoholConsump']
-    lifestyle_mapping = df[lifestyle_cols].merge(dim_lifestyle, on=lifestyle_cols, how='left')['lifestyle_id']
+    # Get unique years
+    years = sorted(df['year'].unique())
     
-    # Create mapping for medical conditions
-    medical_cols = ['HighBP', 'HighChol', 'Stroke', 'HeartDiseaseorAttack']
-    medical_mapping = df[medical_cols].merge(dim_medical_conditions, on=medical_cols, how='left')['medical_conditions_id']
+    # Create time dimension
+    dim_time = pd.DataFrame({
+        'time_id': range(1, len(years) + 1),
+        'year': years,
+        'decade': [(year // 10) * 10 for year in years],
+        'period': ['Historical' if year < 2010 else 'Recent' for year in years]
+    })
     
-    # Create mapping for healthcare access
-    healthcare_cols = ['AnyHealthcare', 'NoDocbcCost', 'CholCheck']
-    healthcare_mapping = df[healthcare_cols].merge(dim_healthcare_access, on=healthcare_cols, how='left')['healthcare_access_id']
+    logging.info(f"Time dimension created: {len(dim_time)} records")
+    logging.info(f"Year range: {dim_time['year'].min()} - {dim_time['year'].max()}")
+    
+    return dim_time
+
+
+def create_dim_mortality_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    
+    logging.info("Creating mortality indicators dimension")
+    
+    # Define expected mortality indicator columns (matching MySQL table structure)
+    expected_cols = [
+        'infant_mortality_rate',
+        'under_five_mortality_rate',
+        'neonatal_mortality_rate',
+        'child_5_14_mortality_rate',
+        'adolescent_mortality_rate',
+        'infant_deaths_count',
+        'under_five_deaths_count',
+        'adolescent_deaths_count'
+    ]
+    
+    # Find available columns in the DataFrame
+    available_cols = [col for col in expected_cols if col in df.columns]
+    
+    if not available_cols:
+        logging.warning("No mortality indicator columns found")
+        # Return a minimal dimension with all columns as None
+        dim_data = {'mortality_indicator_id': [1]}
+        for col in expected_cols:
+            dim_data[col] = [None]
+        return pd.DataFrame(dim_data)
+    
+    # Create DataFrame with only available columns
+    df_mortality = df[available_cols].copy()
+    
+    # Add missing columns with None values
+    for col in expected_cols:
+        if col not in df_mortality.columns:
+            df_mortality[col] = None
+    
+    # Reorder columns to match MySQL table
+    df_mortality = df_mortality[expected_cols]
+    
+    # Remove duplicates
+    df_mortality = df_mortality.drop_duplicates().reset_index(drop=True)
+    
+    # Add ID column at the beginning
+    df_mortality.insert(0, 'mortality_indicator_id', range(1, len(df_mortality) + 1))
+    
+    logging.info(f"Mortality indicators dimension created: {len(df_mortality)} records")
+    logging.info(f"Available indicators: {available_cols}")
+    logging.info(f"Missing indicators filled with None: {[col for col in expected_cols if col not in available_cols]}")
+    
+    return df_mortality
+
+
+def create_dim_socioeconomic_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    
+    logging.info("Creating socioeconomic indicators dimension")
+    
+    # Define expected socioeconomic indicator columns (matching MySQL table structure)
+    expected_cols = [
+        'population_total',
+        'gdp_per_capita',
+        'poverty_headcount_ratio',
+        'school_enrollment_primary',
+        'mortality_rate',
+        'urban_population_percent'
+    ]
+    
+    # Find available columns in the DataFrame
+    available_cols = [col for col in expected_cols if col in df.columns]
+    
+    if not available_cols:
+        logging.warning("No socioeconomic indicator columns found")
+        # Return a minimal dimension with all columns as None
+        dim_data = {'socioeconomic_indicator_id': [1]}
+        for col in expected_cols:
+            dim_data[col] = [None]
+        return pd.DataFrame(dim_data)
+    
+    # Create DataFrame with only available columns
+    df_socioeconomic = df[available_cols].copy()
+    
+    # Add missing columns with None values
+    for col in expected_cols:
+        if col not in df_socioeconomic.columns:
+            df_socioeconomic[col] = None
+    
+    # Reorder columns to match MySQL table
+    df_socioeconomic = df_socioeconomic[expected_cols]
+    
+    # Remove duplicates
+    df_socioeconomic = df_socioeconomic.drop_duplicates().reset_index(drop=True)
+    
+    # Add ID column at the beginning
+    df_socioeconomic.insert(0, 'socioeconomic_indicator_id', range(1, len(df_socioeconomic) + 1))
+    
+    logging.info(f"Socioeconomic indicators dimension created: {len(df_socioeconomic)} records")
+    logging.info(f"Available indicators: {available_cols}")
+    logging.info(f"Missing indicators filled with None: {[col for col in expected_cols if col not in available_cols]}")
+    
+    return df_socioeconomic
+
+
+def create_fact_child_health(
+    df: pd.DataFrame,
+    dim_time: pd.DataFrame,
+    dim_mortality: pd.DataFrame,
+    dim_socioeconomic: pd.DataFrame
+) -> pd.DataFrame:
+    
+    logging.info("Creating fact table for child health")
+    
+    # Merge with time dimension to get time_id
+    df_with_time = pd.merge(
+        df,
+        dim_time[['time_id', 'year']],
+        on='year',
+        how='left'
+    )
+    
+    # Define expected mortality columns (excluding ID)
+    expected_mortality_cols = [
+        'infant_mortality_rate', 'under_five_mortality_rate', 'neonatal_mortality_rate',
+        'child_5_14_mortality_rate', 'adolescent_mortality_rate', 'infant_deaths_count',
+        'under_five_deaths_count', 'adolescent_deaths_count'
+    ]
+    
+    # Define expected socioeconomic columns (excluding ID)
+    expected_socioeconomic_cols = [
+        'population_total', 'gdp_per_capita', 'poverty_headcount_ratio',
+        'school_enrollment_primary', 'mortality_rate', 'urban_population_percent'
+    ]
+    
+    # Find common mortality columns between df and dimension
+    mortality_merge_cols = [
+        col for col in expected_mortality_cols 
+        if col in df.columns and col in dim_mortality.columns
+    ]
+    
+    # Find common socioeconomic columns between df and dimension
+    socioeconomic_merge_cols = [
+        col for col in expected_socioeconomic_cols 
+        if col in df.columns and col in dim_socioeconomic.columns
+    ]
+    
+    # Merge with mortality dimension
+    if len(mortality_merge_cols) > 0 and len(dim_mortality) > 0:
+        df_with_dims = pd.merge(
+            df_with_time,
+            dim_mortality[['mortality_indicator_id'] + mortality_merge_cols],
+            on=mortality_merge_cols,
+            how='left'
+        )
+    else:
+        df_with_dims = df_with_time.copy()
+        df_with_dims['mortality_indicator_id'] = 1
+    
+    # Merge with socioeconomic dimension
+    if len(socioeconomic_merge_cols) > 0 and len(dim_socioeconomic) > 0:
+        df_with_dims = pd.merge(
+            df_with_dims,
+            dim_socioeconomic[['socioeconomic_indicator_id'] + socioeconomic_merge_cols],
+            on=socioeconomic_merge_cols,
+            how='left'
+        )
+    else:
+        df_with_dims['socioeconomic_indicator_id'] = 1
+    
+    # Create fact table with only IDs and key metrics
+    fact_columns = {
+        'record_id': range(1, len(df_with_dims) + 1),
+        'time_id': df_with_dims['time_id'],
+        'mortality_indicator_id': df_with_dims['mortality_indicator_id'],
+        'socioeconomic_indicator_id': df_with_dims['socioeconomic_indicator_id']
+    }
+    
+    # Add key metrics to fact table
+    key_metrics = [
+        'infant_mortality_rate',
+        'under_five_mortality_rate',
+        'neonatal_mortality_rate'
+    ]
+    
+    for metric in key_metrics:
+        if metric in df_with_dims.columns:
+            fact_columns[metric] = df_with_dims[metric]
+    
+    fact_table = pd.DataFrame(fact_columns)
+    
+    logging.info(f"Fact table created: {len(fact_table)} records")
+    logging.info(f"Fact table columns: {list(fact_table.columns)}")
+    
+    return fact_table
+
+
+def dimensional_model_mortality(df_clean: pd.DataFrame) -> dict:
+    
+    logging.info("=" * 70)
+    logging.info("CREATING DIMENSIONAL MODEL FOR CHILD MORTALITY")
+    logging.info("=" * 70)
+    
+    # Create time dimension
+    logging.info("\n[1/4] Creating time dimension...")
+    dim_time = create_dim_time(df_clean)
+    
+    # Create mortality indicators dimension
+    logging.info("\n[2/4] Creating mortality indicators dimension...")
+    dim_mortality = create_dim_mortality_indicators(df_clean)
+    
+    # Create socioeconomic indicators dimension
+    logging.info("\n[3/4] Creating socioeconomic indicators dimension...")
+    dim_socioeconomic = create_dim_socioeconomic_indicators(df_clean)
     
     # Create fact table
-    fact_df = pd.DataFrame({
-        'record_id': range(1, len(df) + 1),
-        'diabetes_status': df['diabetes_status'],
-        'bmi_value': df['BMI'],
-        'mental_health_days': df['MentHlth'],
-        'physical_health_days': df['PhysHlth'],
-        'general_health_score': df['GenHlth'],
-        'difficulty_walking': df['DiffWalk'],
-        'demographic_id': demo_mapping.values,
-        'lifestyle_id': lifestyle_mapping.values,
-        'medical_conditions_id': medical_mapping.values,
-        'healthcare_access_id': healthcare_mapping.values
-    })
+    logging.info("\n[4/4] Creating fact table...")
+    fact_child_health = create_fact_child_health(
+        df_clean,
+        dim_time,
+        dim_mortality,
+        dim_socioeconomic
+    )
     
-    return fact_df
-
-def save_dimensional_tables(output_dir: str, dim_demographics: pd.DataFrame, 
-                          dim_lifestyle: pd.DataFrame, dim_medical_conditions: pd.DataFrame,
-                          dim_healthcare_access: pd.DataFrame, fact_health_records: pd.DataFrame):
-    ensure_directory_exists(output_dir)
-    
+    # Package all tables
     tables = {
-        'dim_demographics.csv': dim_demographics,
-        'dim_lifestyle.csv': dim_lifestyle,
-        'dim_medical_conditions.csv': dim_medical_conditions,
-        'dim_healthcare_access.csv': dim_healthcare_access,
-        'fact_health_records.csv': fact_health_records
+        'dim_time': dim_time,
+        'dim_mortality_indicators': dim_mortality,
+        'dim_socioeconomic_indicators': dim_socioeconomic,
+        'fact_child_health': fact_child_health
     }
     
-    for filename, df in tables.items():
-        filepath = os.path.join(output_dir, filename)
-        df.to_csv(filepath, index=False)
-        logging.info(f"Saved {filename}: {len(df)} records")
-        print(f"Saved {filename}")
-
-def display_sample_data(dim_demographics: pd.DataFrame, dim_lifestyle: pd.DataFrame,
-                       dim_medical_conditions: pd.DataFrame, dim_healthcare_access: pd.DataFrame,
-                       fact_health_records: pd.DataFrame):
-    print(f"\nSample Data from Dimensional Tables:")
-    
-    print(f"\nDemographics (showing first 3 records):")
-    for _, row in dim_demographics.head(3).iterrows():
-        print(f"     {dict(row)}")
-    
-    print(f"\nLifestyle (showing first 3 records):")
-    for _, row in dim_lifestyle.head(3).iterrows():
-        print(f"     {dict(row)}")
-    
-    print(f"\nMedical Conditions (showing first 3 records):")
-    for _, row in dim_medical_conditions.head(3).iterrows():
-        print(f"     {dict(row)}")
-    
-    print(f"\nHealthcare Access (showing first 3 records):")
-    for _, row in dim_healthcare_access.head(3).iterrows():
-        print(f"     {dict(row)}")
-    
-    print(f"\nData Warehouse Summary:")
-    print(f"   Total Fact Records: {len(fact_health_records):,}")
-    total_dim_records = len(dim_demographics) + len(dim_lifestyle) + len(dim_medical_conditions) + len(dim_healthcare_access)
-    print(f"   Total Dimension Records: {total_dim_records:,}")
-    print(f"   Compression Ratio: {len(fact_health_records) / (len(fact_health_records) + total_dim_records):.1%} facts vs dimensions")
-
-def dimensional_model(df_clean):
-    logging.info("Creating dimensional model from clean DataFrame")
-    
-    # Create Demographics Dimension
-    demo_cols = ['Sex', 'Age', 'Education', 'Income']
-    demo_df = df_clean[demo_cols].drop_duplicates().reset_index(drop=True)
-    demo_df['demographic_id'] = range(1, len(demo_df) + 1)
-    demo_df.rename(columns={
-        'Sex': 'sex',
-        'Age': 'age_group', 
-        'Education': 'education_level',
-        'Income': 'income_bracket'
-    }, inplace=True)
-    
-    # Create Lifestyle Dimension
-    lifestyle_cols = ['Smoker', 'PhysActivity', 'Fruits', 'Veggies', 'HvyAlcoholConsump']
-    lifestyle_df = df_clean[lifestyle_cols].drop_duplicates().reset_index(drop=True)
-    lifestyle_df['lifestyle_id'] = range(1, len(lifestyle_df) + 1)
-    lifestyle_df.rename(columns={
-        'Smoker': 'smoker_status',
-        'PhysActivity': 'physical_activity',
-        'Fruits': 'fruits_consumption',
-        'Veggies': 'vegetables_consumption', 
-        'HvyAlcoholConsump': 'heavy_alcohol_consumption'
-    }, inplace=True)
-    
-    # Create Medical Conditions Dimension
-    medical_cols = ['HighBP', 'HighChol', 'CholCheck', 'Stroke', 'HeartDiseaseorAttack', 'DiffWalk']
-    medical_df = df_clean[medical_cols].drop_duplicates().reset_index(drop=True)
-    medical_df['medical_conditions_id'] = range(1, len(medical_df) + 1)
-    medical_df.rename(columns={
-        'HighBP': 'high_blood_pressure',
-        'HighChol': 'high_cholesterol',
-        'CholCheck': 'cholesterol_check',
-        'Stroke': 'stroke_history',
-        'HeartDiseaseorAttack': 'heart_disease_or_attack',
-        'DiffWalk': 'difficulty_walking'
-    }, inplace=True)
-    
-    # Create Healthcare Access Dimension  
-    healthcare_cols = ['AnyHealthcare', 'NoDocbcCost']
-    healthcare_df = df_clean[healthcare_cols].drop_duplicates().reset_index(drop=True)
-    healthcare_df['healthcare_access_id'] = range(1, len(healthcare_df) + 1)
-    healthcare_df.rename(columns={
-        'AnyHealthcare': 'any_healthcare_coverage',
-        'NoDocbcCost': 'no_doctor_due_to_cost'
-    }, inplace=True)
-    
-    # Create mapping dictionaries for fact table
-    # Demographics mapping
-    demo_mapping_dict = {}
-    for idx, row in demo_df.iterrows():
-        key = (row['sex'], row['age_group'], row['education_level'], row['income_bracket'])
-        demo_mapping_dict[key] = row['demographic_id']
-    
-    # Apply demographics mapping
-    demo_ids = []
-    for idx, row in df_clean.iterrows():
-        key = (row['Sex'], row['Age'], row['Education'], row['Income'])
-        demo_ids.append(demo_mapping_dict[key])
-    
-    # Lifestyle mapping
-    lifestyle_mapping_dict = {}
-    for idx, row in lifestyle_df.iterrows():
-        key = (row['smoker_status'], row['physical_activity'], row['fruits_consumption'], 
-               row['vegetables_consumption'], row['heavy_alcohol_consumption'])
-        lifestyle_mapping_dict[key] = row['lifestyle_id']
-    
-    # Apply lifestyle mapping
-    lifestyle_ids = []
-    for idx, row in df_clean.iterrows():
-        key = (row['Smoker'], row['PhysActivity'], row['Fruits'], row['Veggies'], row['HvyAlcoholConsump'])
-        lifestyle_ids.append(lifestyle_mapping_dict[key])
-    
-    # Medical conditions mapping
-    medical_mapping_dict = {}
-    for idx, row in medical_df.iterrows():
-        key = (row['high_blood_pressure'], row['high_cholesterol'], row['cholesterol_check'], 
-               row['stroke_history'], row['heart_disease_or_attack'], row['difficulty_walking'])
-        medical_mapping_dict[key] = row['medical_conditions_id']
-    
-    # Apply medical mapping
-    medical_ids = []
-    for idx, row in df_clean.iterrows():
-        key = (row['HighBP'], row['HighChol'], row['CholCheck'], row['Stroke'], row['HeartDiseaseorAttack'], row['DiffWalk'])
-        medical_ids.append(medical_mapping_dict[key])
-    
-    # Healthcare access mapping
-    healthcare_mapping_dict = {}
-    for idx, row in healthcare_df.iterrows():
-        key = (row['any_healthcare_coverage'], row['no_doctor_due_to_cost'])
-        healthcare_mapping_dict[key] = row['healthcare_access_id']
-    
-    # Apply healthcare mapping
-    healthcare_ids = []
-    for idx, row in df_clean.iterrows():
-        key = (row['AnyHealthcare'], row['NoDocbcCost'])
-        healthcare_ids.append(healthcare_mapping_dict[key])
-    
-    # Create Fact Table
-    fact_df = pd.DataFrame({
-        'record_id': range(1, len(df_clean) + 1),
-        'diabetes_status': df_clean['diabetes_status'].astype(str),
-        'bmi_value': df_clean['BMI'].astype(float),
-        'mental_health_days': df_clean['MentHlth'].astype(float), 
-        'physical_health_days': df_clean['PhysHlth'].astype(float),
-        'general_health_score': df_clean['GenHlth'].astype(float),
-        'demographic_id': demo_ids,
-        'lifestyle_id': lifestyle_ids,
-        'medical_conditions_id': medical_ids,
-        'healthcare_access_id': healthcare_ids
-    })
-    
-    tables = {
-        'dim_demographics': demo_df,
-        'dim_lifestyle': lifestyle_df,
-        'dim_medical_conditions': medical_df,
-        'dim_healthcare_access': healthcare_df,
-        'fact_health_records': fact_df
-    }
-    
-    logging.info(f"Created dimensional model with {len(tables)} tables")
+    # Summary
+    logging.info("\n" + "=" * 70)
+    logging.info("DIMENSIONAL MODEL CREATED")
+    logging.info("=" * 70)
     for table_name, table_df in tables.items():
-        logging.info(f"  - {table_name}: {len(table_df)} records")
+        logging.info(f"{table_name}: {len(table_df)} records, {len(table_df.columns)} columns")
     
     return tables
 
-def main():
-    print("=" * 60)
-    print("DIMENSIONAL ETL - DIABETES HEALTH INDICATORS")
-    print("=" * 60)
-    
-    # Setup logging
-    log_dir = 'logs'
-    ensure_directory_exists(log_dir)
-    log_file = os.path.join(log_dir, f'dimensional_etl_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
-    setup_logging('INFO', log_file)
-    
-    logging.info("Starting Dimensional ETL process")
-    print(f"Logging to: {log_file}")
-    
-    try:
-        # Load the dataset
-        data_file = os.path.join('..', 'data', 'processed', 'diabetes_012_processed.csv')
-        df = load_diabetes_dataset(data_file)
-        
-        print(f"\n📊 Dataset Info:")
-        print(f"   Shape: {df.shape}")
-        print(f"   Columns: {list(df.columns)}")
-        
-        # Create dimensional tables
-        print(f"\nCreating Dimensional Tables...")
-        
-        dim_demographics = create_dim_demographics(df)
-        print(f"Demographics: {len(dim_demographics)} unique combinations")
-        
-        dim_lifestyle = create_dim_lifestyle(df)
-        print(f"Lifestyle: {len(dim_lifestyle)} unique combinations")
-        
-        dim_medical_conditions = create_dim_medical_conditions(df)
-        print(f"Medical Conditions: {len(dim_medical_conditions)} unique combinations")
-        
-        dim_healthcare_access = create_dim_healthcare_access(df)
-        print(f"Healthcare Access: {len(dim_healthcare_access)} unique combinations")
-        
-        # Create fact table
-        print(f"\nCreating Fact Table...")
-        fact_health_records = create_fact_health_records(df, dim_demographics, dim_lifestyle,
-                                                       dim_medical_conditions, dim_healthcare_access)
-        print(f"Fact Health Records: {len(fact_health_records)} records")
-        
-        # Save dimensional tables
-        print(f"\nSaving Dimensional Tables...")
-        output_dir = os.path.join('..', 'data', 'processed')
-        save_dimensional_tables(output_dir, dim_demographics, dim_lifestyle, 
-                               dim_medical_conditions, dim_healthcare_access, fact_health_records)
-        
-        # Display sample data
-        display_sample_data(dim_demographics, dim_lifestyle, dim_medical_conditions,
-                          dim_healthcare_access, fact_health_records)
-        
-        print(f"\n" + "=" * 60)
-        print("DIMENSIONAL ETL COMPLETED SUCCESSFULLY!")
-        print("=" * 60)
-        
-        print(f"\nOutput Files:")
-        print(f"   - {output_dir}/dim_demographics.csv ({len(dim_demographics)} records)")
-        print(f"   - {output_dir}/dim_lifestyle.csv ({len(dim_lifestyle)} records)")
-        print(f"   - {output_dir}/dim_medical_conditions.csv ({len(dim_medical_conditions)} records)")
-        print(f"   - {output_dir}/dim_healthcare_access.csv ({len(dim_healthcare_access)} records)")
-        print(f"   - {output_dir}/fact_health_records.csv ({len(fact_health_records)} records)")
-        
-        logging.info("Dimensional ETL completed successfully")
-        
-    except Exception as e:
-        error_msg = f"Error during dimensional ETL: {str(e)}"
-        print(f"\n{error_msg}")
-        logging.error(error_msg, exc_info=True)
-        sys.exit(1)
 
-if __name__ == "__main__":
-    main()
+def save_dimensional_tables(tables: dict, output_dir: str = "data/processed"):
+    
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    logging.info(f"Saving dimensional tables to {output_dir}")
+    
+    for table_name, df in tables.items():
+        file_path = os.path.join(output_dir, f"{table_name}.csv")
+        df.to_csv(file_path, index=False)
+        logging.info(f"  Saved {table_name}: {len(df)} records -> {file_path}")
+    
+    logging.info("All dimensional tables saved successfully")

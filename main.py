@@ -1,122 +1,261 @@
 import sys
 import os
-import mysql.connector
-from mysql.connector import Error
+import logging
+from datetime import datetime
 
+# Add src directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from extraction import load_raw_data
-from transform import full_transformation_pipeline
-from dimensional_etl import dimensional_model
-from load import MySQLLoader
-from config import DB_CONFIG
+# Import extraction functions
+from extraction import (
+    load_child_mortality_data,
+    extract_socioeconomic_data_from_api,
+    extract_colombian_socioeconomic_data
+)
 
-def test_mysql_connection():
-    try:
-        basic_config = {
-            'host': DB_CONFIG['host'],
-            'port': DB_CONFIG['port'],
-            'user': DB_CONFIG['user'],
-            'password': DB_CONFIG['password']
-        }
-        
-        print(f"Testing MySQL connection to {basic_config['host']}:{basic_config['port']}...")
-        test_connection = mysql.connector.connect(**basic_config)
-        
-        cursor = test_connection.cursor()
-        cursor.execute("SELECT VERSION()")
-        version = cursor.fetchone()[0]
-        print(f"MySQL Server connected successfully! Version: {version}")
-        
-        cursor.close()
-        test_connection.close()
-        return True
-        
-    except Error as e:
-        print(f"MySQL connection test failed: {str(e)}")
-        return False
+# Import transformation functions
+from transform import full_transformation_pipeline_mortality
 
-def connect_to_database():
-    try:
-        temp_config = DB_CONFIG.copy()
-        database_name = temp_config.pop('database')
+# Import dimensional modeling
+from dimensional_etl import (
+    dimensional_model_mortality,
+    save_dimensional_tables
+)
 
-        temp_connection = mysql.connector.connect(**temp_config)
-        temp_cursor = temp_connection.cursor()
-        temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
-        temp_cursor.close()
-        temp_connection.close()
-        
-        connection = mysql.connector.connect(**DB_CONFIG)
-        return connection
-    except Error as e:
-        print(f"Error connecting to MySQL: {str(e)}")
-        return None
+# Import loading functions
+from load import MySQLLoaderMortality
+
+# Import configuration
+from config import DB_CONFIG_MORTALITY
+
+
+def setup_logging():
+    """
+    Configure logging for the ETL pipeline.
+    """
+    # Create logs directory if it doesn't exist
+    os.makedirs('logs', exist_ok=True)
+    
+    # Create log filename with timestamp
+    log_filename = f"logs/mortality_etl_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_filename),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    logging.info(f"Logging initialized: {log_filename}")
+    return log_filename
+
+
+def print_section_header(title: str):
+    """
+    Print a formatted section header.
+    
+    Args:
+        title: Section title
+    """
+    print("\n" + "=" * 70)
+    print(title.center(70))
+    print("=" * 70)
+
 
 def main():
-    print("=" * 60)
-    print("DIABETES ETL PIPELINE")
-    print("=" * 60)
-
+    """
+    Main ETL pipeline execution.
+    """
+    # Setup logging
+    log_file = setup_logging()
+    
+    print_section_header("CHILD MORTALITY ETL PIPELINE")
+    print(f"\n📋 Log file: {log_file}")
+    
     try:
-        print("\n[1] DATA EXTRACTION")
-        df_raw = load_raw_data()
-        print("Extraction completed")
+        # ============================================================
+        # STEP 1: EXTRACTION - Load Child Mortality Data from CSV
+        # ============================================================
+        print_section_header("STEP 1: EXTRACTING CHILD MORTALITY DATA")
         
-        print("\n[2] DATA TRANSFORMATION")
-        df_clean = full_transformation_pipeline(df_raw)
-        print("Transformation completed")
+        mortality_file = "data/raw/child_mortality_indicators_col.csv"
+        print(f"\n📂 Loading data from: {mortality_file}")
         
-        print("\nClass distribution:")
-        class_counts = df_clean['diabetes_status'].value_counts()
-        for class_val, count in class_counts.items():
-            percentage = (count / len(df_clean)) * 100
-            print(f"  - {class_val}: {count:,} ({percentage:.1f}%)")
+        df_mortality_raw = load_child_mortality_data(mortality_file)
         
-        print("\n[3] DIMENSIONAL MODELING")
-        tables = dimensional_model(df_clean)
-        print("Dimensional model created")
-
-        print("\n[4] DATABASE CONNECTION")
-        if not test_mysql_connection():
-            raise Exception("MySQL server connection failed")
+        print(f"✓ Mortality data loaded: {df_mortality_raw.shape[0]:,} rows, {df_mortality_raw.shape[1]} columns")
+        print(f"\nSample columns: {list(df_mortality_raw.columns)[:5]}...")
         
-        connection = connect_to_database()
-        if not connection:
+        # ============================================================
+        # STEP 2: EXTRACTION - Query Socioeconomic Data from API
+        # ============================================================
+        print_section_header("STEP 2: EXTRACTING SOCIOECONOMIC DATA FROM API")
+        
+        print("\n🌐 Querying World Bank API for socioeconomic indicators...")
+        print("   (This may take a moment...)")
+        
+        # Extract years from mortality data
+        if 'YEAR (DISPLAY)' in df_mortality_raw.columns:
+            years_in_data = sorted(df_mortality_raw['YEAR (DISPLAY)'].dropna().astype(int).unique())
+            print(f"\n   Year range in mortality data: {min(years_in_data)} - {max(years_in_data)}")
+            
+            # Query API for these years
+            df_socioeconomic_raw = extract_socioeconomic_data_from_api(
+                start_year=min(years_in_data),
+                end_year=max(years_in_data)
+            )
+        else:
+            # Default year range
+            df_socioeconomic_raw = extract_socioeconomic_data_from_api()
+        
+        if not df_socioeconomic_raw.empty:
+            print(f"✓ Socioeconomic data retrieved: {df_socioeconomic_raw.shape[0]:,} rows")
+            # Los datos ya están pivoteados, contar columnas (excluyendo 'year')
+            print(f"   Indicators: {len(df_socioeconomic_raw.columns) - 1}")
+        else:
+            print("⚠️  No socioeconomic data retrieved from API")
+            print("   Pipeline will continue with mortality data only")
+        
+        # Optional: Query Colombian specific APIs
+        print("\n📊 Colombian API Integration:")
+        print("   See logs for information on integrating Colombian data sources")
+        df_colombian = extract_colombian_socioeconomic_data()
+        
+        # ============================================================
+        # STEP 3: TRANSFORMATION - Clean and Merge Data
+        # ============================================================
+        print_section_header("STEP 3: TRANSFORMING AND MERGING DATA")
+        
+        print("\n🔄 Running transformation pipeline...")
+        print("   - Cleaning mortality data")
+        print("   - Cleaning socioeconomic data")
+        print("   - Aggregating indicators")
+        print("   - Merging datasets on year")
+        print("   - Handling missing values")
+        
+        df_clean = full_transformation_pipeline_mortality(
+            df_mortality_raw,
+            df_socioeconomic_raw,
+            missing_value_strategy='interpolate'  # Imputación inteligente con interpolación
+        )
+        
+        print(f"\n✓ Transformation completed")
+        print(f"   Final dataset: {df_clean.shape[0]:,} rows, {df_clean.shape[1]} columns")
+        
+        if 'year' in df_clean.columns:
+            print(f"   Year range: {df_clean['year'].min()} - {df_clean['year'].max()}")
+        
+        # Save intermediate result
+        output_file = "data/processed/child_mortality_integrated.csv"
+        os.makedirs("data/processed", exist_ok=True)
+        df_clean.to_csv(output_file, index=False)
+        print(f"\n💾 Saved integrated data to: {output_file}")
+        
+        # ============================================================
+        # STEP 4: DIMENSIONAL MODELING
+        # ============================================================
+        print_section_header("STEP 4: CREATING DIMENSIONAL MODEL")
+        
+        print("\n🏗️  Building star schema...")
+        print("   - Time dimension")
+        print("   - Mortality indicators dimension")
+        print("   - Socioeconomic indicators dimension")
+        print("   - Fact table (child health)")
+        
+        tables = dimensional_model_mortality(df_clean)
+        
+        print(f"\n✓ Dimensional model created:")
+        for table_name, df_table in tables.items():
+            print(f"   - {table_name}: {len(df_table):,} records")
+        
+        # Save dimensional tables to CSV
+        save_dimensional_tables(tables, "data/processed")
+        print(f"\n💾 Dimensional tables saved to: data/processed/")
+        
+        # ============================================================
+        # STEP 5: LOADING TO DATABASE
+        # ============================================================
+        print_section_header("STEP 5: LOADING DATA TO MYSQL")
+        
+        print(f"\n🗄️  Database: {DB_CONFIG_MORTALITY['database']}")
+        print(f"   Host: {DB_CONFIG_MORTALITY['host']}:{DB_CONFIG_MORTALITY['port']}")
+        
+        # Initialize loader
+        loader = MySQLLoaderMortality(**DB_CONFIG_MORTALITY)
+        
+        # Create database
+        print("\n   Creating database...")
+        if not loader.create_database():
+            raise Exception("Failed to create database")
+        
+        # Connect to database
+        print("   Connecting to database...")
+        if not loader.connect():
             raise Exception("Failed to connect to database")
-        print(f"Connected to {DB_CONFIG['database']}")
         
-        # Step 5: Loading
-        print("\n[5] LOADING TO MYSQL")
-        loader = MySQLLoader(**{k: v for k, v in DB_CONFIG.items() if k in ['host', 'port', 'user', 'password', 'database']})
-        loader.connection = connection
-        loader.cursor = connection.cursor()
-        
+        # Create tables
+        print("   Creating tables...")
         if not loader.create_all_tables():
-            raise Exception("Failed to create database tables")
+            raise Exception("Failed to create tables")
         
-        loader.load_dataframes_to_mysql(tables)
-        print("Loading completed")
+        # Load data
+        print("   Loading dimensional tables...")
+        loader.load_dimensional_tables(tables)
         
-        print("\n" + "=" * 60)
-        print("ETL PIPELINE COMPLETED SUCCESSFULLY!")
-        print("=" * 60)
+        # Verify data load
+        print("\n   Verifying data load...")
+        counts = loader.verify_data_load()
         
-        print("Processing completed successfully")
+        # Close connection
+        loader.disconnect()
         
-        connection.close()
-        print("Database connection closed")
-        return tables
-
+        print("\n✓ Data loaded successfully to MySQL")
+        
+        # ============================================================
+        # PIPELINE COMPLETED
+        # ============================================================
+        print_section_header("ETL PIPELINE COMPLETED SUCCESSFULLY!")
+        
+        print("\n📊 Summary:")
+        print(f"   ✓ Mortality records processed: {df_mortality_raw.shape[0]:,}")
+        print(f"   ✓ Socioeconomic records retrieved: {df_socioeconomic_raw.shape[0]:,}")
+        print(f"   ✓ Final integrated records: {df_clean.shape[0]:,}")
+        print(f"   ✓ Database tables created: {len(tables)}")
+        print(f"   ✓ Total records in database: {sum(counts.values()):,}")
+        
+        print("\n📁 Output Files:")
+        print(f"   - Integrated data: {output_file}")
+        print(f"   - Dimensional tables: data/processed/*.csv")
+        print(f"   - Log file: {log_file}")
+        
+        print("\n🔍 Next Steps:")
+        print("   1. Query the MySQL database for analysis")
+        print("   2. Create visualizations and dashboards")
+        print("   3. Investigate relationships between mortality and socioeconomic factors")
+        
+        print("\n💡 Sample Query:")
+        print("   SELECT year, infant_mortality_rate, gdp_per_capita")
+        print("   FROM fact_child_health f")
+        print("   JOIN dim_time t ON f.time_id = t.time_id")
+        print("   JOIN dim_socioeconomic_indicators s ON f.socioeconomic_indicator_id = s.socioeconomic_indicator_id")
+        print("   ORDER BY year;")
+        
+        return 0
+        
+    except FileNotFoundError as e:
+        print(f"\n❌ ERROR: File not found - {e}")
+        logging.error(f"File not found: {e}")
+        return 1
+        
     except Exception as e:
-        print(f"\nError during ETL: {str(e)}")
-        return None
+        print(f"\n❌ ERROR: Pipeline failed - {e}")
+        logging.error(f"Pipeline error: {e}", exc_info=True)
+        return 1
+
 
 if __name__ == "__main__":
-    result = main()
-    if result is not None:
-        print("\nPipeline completed successfully.")
-        sys.exit(0)
-    else:
-        print("\nPipeline failed.")
-        sys.exit(1)
+    exit_code = main()
+    sys.exit(exit_code)

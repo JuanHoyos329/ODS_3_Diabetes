@@ -1,127 +1,129 @@
 import pandas as pd
 import mysql.connector
 from mysql.connector import Error
-import sys
 import logging
+import sys
+import os
 
-sys.path.append('..')
-from config import DB_CONFIG, DB_TABLES
+# Add parent directory to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from config import DB_CONFIG_MORTALITY
 
 
-def get_connection():
-    return mysql.connector.connect(**DB_CONFIG)
-
-def create_tables():
+def create_mortality_tables(connection):
+  
+    cursor = connection.cursor()
+    
     try:
-        temp_config = DB_CONFIG.copy()
-        database_name = temp_config.pop('database')
-
-        temp_connection = mysql.connector.connect(**temp_config)
-        temp_cursor = temp_connection.cursor()
-        temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
-        temp_cursor.close()
-        temp_connection.close()
-
-        connection = get_connection()
-        cursor = connection.cursor()
-
+        logging.info("Creating tables for child mortality dimensional model")
+        
+        # Drop existing tables (in correct order due to foreign keys)
         drop_statements = [
-            "DROP TABLE IF EXISTS fact_health_records",
-            "DROP TABLE IF EXISTS dim_demographics",
-            "DROP TABLE IF EXISTS dim_lifestyle",
-            "DROP TABLE IF EXISTS dim_medical_conditions",
-            "DROP TABLE IF EXISTS dim_healthcare_access",
+            "DROP TABLE IF EXISTS fact_child_health",
+            "DROP TABLE IF EXISTS dim_time",
+            "DROP TABLE IF EXISTS dim_mortality_indicators",
+            "DROP TABLE IF EXISTS dim_socioeconomic_indicators"
         ]
+        
         for statement in drop_statements:
             cursor.execute(statement)
-
+        
+        # Create dimension tables
         create_statements = [
+            # Time dimension
             """
-            CREATE TABLE dim_demographics (
-                demographic_id INT PRIMARY KEY,
-                sex VARCHAR(10) NOT NULL,
-                age_group DECIMAL(3,1) NOT NULL,
-                education_level DECIMAL(3,1) NOT NULL,
-                income_bracket DECIMAL(3,1) NOT NULL,
-                INDEX idx_sex (sex),
-                INDEX idx_age_group (age_group),
-                INDEX idx_education (education_level),
-                INDEX idx_income (income_bracket)
+            CREATE TABLE dim_time (
+                time_id INT PRIMARY KEY,
+                year INT NOT NULL,
+                decade INT NOT NULL,
+                period VARCHAR(20) NOT NULL,
+                INDEX idx_year (year),
+                INDEX idx_decade (decade)
             ) ENGINE=InnoDB
             """,
+            
+            # Mortality indicators dimension
             """
-            CREATE TABLE dim_lifestyle (
-                lifestyle_id INT PRIMARY KEY,
-                smoker_status VARCHAR(10) NOT NULL,
-                physical_activity VARCHAR(10) NOT NULL,
-                fruits_consumption VARCHAR(10) NOT NULL,
-                vegetables_consumption VARCHAR(10) NOT NULL,
-                heavy_alcohol_consumption VARCHAR(10) NOT NULL,
-                INDEX idx_smoker (smoker_status),
-                INDEX idx_physical_activity (physical_activity)
+            CREATE TABLE dim_mortality_indicators (
+                mortality_indicator_id INT PRIMARY KEY,
+                infant_mortality_rate DECIMAL(10,4),
+                under_five_mortality_rate DECIMAL(10,4),
+                neonatal_mortality_rate DECIMAL(10,4),
+                child_5_14_mortality_rate DECIMAL(10,4),
+                adolescent_mortality_rate DECIMAL(10,4),
+                infant_deaths_count DECIMAL(15,2),
+                under_five_deaths_count DECIMAL(15,2),
+                adolescent_deaths_count DECIMAL(15,2),
+                INDEX idx_infant_mortality (infant_mortality_rate),
+                INDEX idx_under_five_mortality (under_five_mortality_rate)
             ) ENGINE=InnoDB
             """,
+            
+            # Socioeconomic indicators dimension
             """
-            CREATE TABLE dim_medical_conditions (
-                medical_conditions_id INT PRIMARY KEY,
-                high_blood_pressure VARCHAR(10) NOT NULL,
-                high_cholesterol VARCHAR(10) NOT NULL,
-                cholesterol_check VARCHAR(10) NOT NULL,
-                stroke_history VARCHAR(10) NOT NULL,
-                heart_disease_or_attack VARCHAR(10) NOT NULL,
-                difficulty_walking VARCHAR(10) NOT NULL,
-                INDEX idx_high_bp (high_blood_pressure),
-                INDEX idx_high_chol (high_cholesterol),
-                INDEX idx_heart_disease (heart_disease_or_attack)
+            CREATE TABLE dim_socioeconomic_indicators (
+                socioeconomic_indicator_id INT PRIMARY KEY,
+                population_total DECIMAL(15,2),
+                gdp_per_capita DECIMAL(15,2),
+                poverty_headcount_ratio DECIMAL(10,4),
+                school_enrollment_primary DECIMAL(10,4),
+                mortality_rate DECIMAL(10,4),
+                urban_population_percent DECIMAL(10,4),
+                INDEX idx_poverty (poverty_headcount_ratio),
+                INDEX idx_gdp (gdp_per_capita)
             ) ENGINE=InnoDB
             """,
+            
+            # Fact table
             """
-            CREATE TABLE dim_healthcare_access (
-                healthcare_access_id INT PRIMARY KEY,
-                any_healthcare_coverage VARCHAR(10) NOT NULL,
-                no_doctor_due_to_cost VARCHAR(10) NOT NULL,
-                INDEX idx_healthcare_coverage (any_healthcare_coverage),
-                INDEX idx_doctor_cost (no_doctor_due_to_cost)
-            ) ENGINE=InnoDB
-            """,
-            """
-            CREATE TABLE fact_health_records (
+            CREATE TABLE fact_child_health (
                 record_id BIGINT PRIMARY KEY,
-                diabetes_status VARCHAR(20) NOT NULL,
-                bmi_value DECIMAL(5,2) NOT NULL,
-                mental_health_days DECIMAL(3,1) NOT NULL,
-                physical_health_days DECIMAL(3,1) NOT NULL,
-                general_health_score DECIMAL(3,1) NOT NULL,
-                demographic_id INT NOT NULL,
-                lifestyle_id INT NOT NULL,
-                medical_conditions_id INT NOT NULL,
-                healthcare_access_id INT NOT NULL,
-                FOREIGN KEY (demographic_id) REFERENCES dim_demographics(demographic_id),
-                FOREIGN KEY (lifestyle_id) REFERENCES dim_lifestyle(lifestyle_id),
-                FOREIGN KEY (medical_conditions_id) REFERENCES dim_medical_conditions(medical_conditions_id),
-                FOREIGN KEY (healthcare_access_id) REFERENCES dim_healthcare_access(healthcare_access_id),
-                INDEX idx_diabetes_status (diabetes_status),
-                INDEX idx_bmi (bmi_value),
-                INDEX idx_diabetes_bmi (diabetes_status, bmi_value)
+                time_id INT NOT NULL,
+                mortality_indicator_id INT NOT NULL,
+                socioeconomic_indicator_id INT NOT NULL,
+                infant_mortality_rate DECIMAL(10,4),
+                under_five_mortality_rate DECIMAL(10,4),
+                neonatal_mortality_rate DECIMAL(10,4),
+                FOREIGN KEY (time_id) REFERENCES dim_time(time_id),
+                FOREIGN KEY (mortality_indicator_id) REFERENCES dim_mortality_indicators(mortality_indicator_id),
+                FOREIGN KEY (socioeconomic_indicator_id) REFERENCES dim_socioeconomic_indicators(socioeconomic_indicator_id),
+                INDEX idx_time (time_id),
+                INDEX idx_mortality (mortality_indicator_id),
+                INDEX idx_infant_rate (infant_mortality_rate),
+                INDEX idx_under_five_rate (under_five_mortality_rate)
             ) ENGINE=InnoDB
-            """,
+            """
         ]
-        for statement in create_statements:
+        
+        for i, statement in enumerate(create_statements, 1):
             cursor.execute(statement)
-
+            logging.info(f"  [{i}/{len(create_statements)}] Table created")
+        
         connection.commit()
-        cursor.close()
-        connection.close()
         logging.info("All tables created successfully")
-
-    except mysql.connector.Error as err:
-        logging.error(f"Error creating tables: {err}")
+        
+    except Error as e:
+        logging.error(f"Error creating tables: {e}")
         raise
+    finally:
+        cursor.close()
 
-class MySQLLoader:
+
+class MySQLLoaderMortality:
+    
     def __init__(self, host=None, port=None, user=None, password=None, database=None):
+        """
+        Initialize MySQL loader.
+        
+        Args:
+            host: Database host
+            port: Database port
+            user: Database user
+            password: Database password
+            database: Database name
+        """
         self.config = (
-            DB_CONFIG
+            DB_CONFIG_MORTALITY.copy()
             if host is None
             else {
                 "host": host,
@@ -129,14 +131,18 @@ class MySQLLoader:
                 "user": user,
                 "password": password,
                 "database": database,
-                "charset": "utf8mb4",
-                "autocommit": True,
             }
         )
         self.connection = None
         self.cursor = None
-
+    
     def connect(self) -> bool:
+        """
+        Connect to MySQL database.
+        
+        Returns:
+            True if connection successful, False otherwise
+        """
         try:
             self.connection = mysql.connector.connect(**self.config)
             self.cursor = self.connection.cursor()
@@ -145,86 +151,172 @@ class MySQLLoader:
         except Error as e:
             logging.error(f"Error connecting to MySQL: {str(e)}")
             return False
-
+    
     def disconnect(self):
+        """
+        Disconnect from MySQL database.
+        """
         if self.cursor:
             self.cursor.close()
         if self.connection and self.connection.is_connected():
             self.connection.close()
             logging.info("MySQL connection closed")
-
-    def load_dataframe(self, df: pd.DataFrame, table_name: str):
-        if df.empty:
-            logging.warning(f"No data to load for table {table_name}")
-            return
-        columns = ", ".join(df.columns)
-        placeholders = ", ".join(["%s"] * len(df.columns))
-        insert_sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
-        df_clean = df.fillna(0)
-        data_tuples = [tuple(row) for row in df_clean.values]
-        self.cursor.executemany(insert_sql, data_tuples)
-        logging.info(f"Data loaded to {table_name}")
-
+    
     def create_database(self, database_name: str = None) -> bool:
+        """
+        Create database if it doesn't exist.
+        
+        Args:
+            database_name: Name of database to create
+            
+        Returns:
+            True if successful, False otherwise
+        """
         if database_name is None:
             database_name = self.config["database"]
+        
         try:
+            # Connect without database
             temp_config = self.config.copy()
-            del temp_config["database"]
+            temp_config.pop('database', None)
+            
             temp_connection = mysql.connector.connect(**temp_config)
             temp_cursor = temp_connection.cursor()
+            
             temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS {database_name}")
+            
             temp_cursor.close()
             temp_connection.close()
+            
             logging.info(f"Database {database_name} created/verified")
             return True
+            
         except Error as e:
-            if e.errno == 1007:
-                logging.info(f"Database {database_name} already exists")
-                return True
             logging.error(f"Error creating database: {str(e)}")
             return False
-
+    
     def create_all_tables(self) -> bool:
+        """
+        Create all tables for dimensional model.
+        
+        Returns:
+            True if successful, False otherwise
+        """
         try:
-            create_tables()
+            create_mortality_tables(self.connection)
             return True
         except Exception as e:
             logging.error(f"Error creating tables: {str(e)}")
             return False
-
-    def load_dataframes_to_mysql(self, tables: dict):
-        """Load multiple dataframes to their corresponding tables"""
+    
+    def load_dataframe(self, df: pd.DataFrame, table_name: str):
+        """
+        Load DataFrame to MySQL table.
+        
+        Args:
+            df: DataFrame to load
+            table_name: Target table name
+        """
+        if df.empty:
+            logging.warning(f"No data to load for table {table_name}")
+            return
+        
+        # Replace NaN with None for MySQL NULL
+        df_clean = df.where(pd.notnull(df), None)
+        
+        # Generate INSERT statement
+        columns = ", ".join(df.columns)
+        placeholders = ", ".join(["%s"] * len(df.columns))
+        insert_sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+        
+        # Convert to list of tuples
+        data_tuples = [tuple(row) for row in df_clean.values]
+        
         try:
-            for table_name, df in tables.items():
-                logging.info(f"Loading data to {table_name}")
-                self.load_dataframe(df, table_name)
-            
+            # Execute batch insert
+            self.cursor.executemany(insert_sql, data_tuples)
             self.connection.commit()
-            logging.info("All dataframes loaded successfully")
-            
+            logging.info(f"Loaded {len(df)} records to {table_name}")
         except Error as e:
-            logging.error(f"Error loading dataframes: {str(e)}")
-            if self.connection:
-                self.connection.rollback()
+            logging.error(f"Error loading data to {table_name}: {e}")
+            self.connection.rollback()
             raise
-
-    def verify_data_load(self):
-        tables = [
-            "dim_demographics",
-            "dim_lifestyle",
-            "dim_medical_conditions",
-            "dim_healthcare_access",
-            "fact_health_records",
+    
+    def load_dimensional_tables(self, tables: dict):
+        """
+        Load all dimensional tables to database.
+        
+        Args:
+            tables: Dictionary of table_name: DataFrame
+        """
+        logging.info("=" * 70)
+        logging.info("LOADING DATA TO MYSQL DATABASE")
+        logging.info("=" * 70)
+        
+        # Define load order (dimensions first, then fact table)
+        load_order = [
+            'dim_time',
+            'dim_mortality_indicators',
+            'dim_socioeconomic_indicators',
+            'fact_child_health'
         ]
+        
+        for table_name in load_order:
+            if table_name in tables:
+                logging.info(f"\nLoading {table_name}...")
+                self.load_dataframe(tables[table_name], table_name)
+            else:
+                logging.warning(f"Table {table_name} not found in provided tables")
+        
+        logging.info("\n" + "=" * 70)
+        logging.info("ALL DATA LOADED SUCCESSFULLY")
+        logging.info("=" * 70)
+    
+    def verify_data_load(self) -> dict:
+        """
+        Verify data was loaded correctly by counting records in each table.
+        
+        Returns:
+            Dictionary with table names and record counts
+        """
+        tables = [
+            "dim_time",
+            "dim_mortality_indicators",
+            "dim_socioeconomic_indicators",
+            "fact_child_health"
+        ]
+        
         counts = {}
+        
+        logging.info("\nVerifying data load:")
+        
         try:
             for table in tables:
                 self.cursor.execute(f"SELECT COUNT(*) FROM {table}")
                 count = self.cursor.fetchone()[0]
                 counts[table] = count
-                logging.info(f"Table {table}: {count} records")
+                logging.info(f"  {table}: {count:,} records")
+            
             return counts
+            
         except Error as e:
             logging.error(f"Error verifying data load: {str(e)}")
             return {}
+    
+    def execute_query(self, query: str) -> list:
+        """
+        Execute a SELECT query and return results.
+        
+        Args:
+            query: SQL query to execute
+            
+        Returns:
+            List of result tuples
+        """
+        try:
+            self.cursor.execute(query)
+            results = self.cursor.fetchall()
+            return results
+        except Error as e:
+            logging.error(f"Error executing query: {e}")
+            return []
