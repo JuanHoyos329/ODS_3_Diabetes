@@ -1,146 +1,232 @@
-# Diabetes Health Indicators ETL Pipeline
+# Diabetes Analytics Data Warehouse
 
-## Introduction
+## Overview
 
-This project implements a **complete ETL pipeline** for analyzing health indicators related to diabetes, using data from the **BRFSS 2015** (Behavioral Risk Factor Surveillance System). The system processes and transforms the data into a **dimensional model (Star Schema)** optimized for analytical queries and efficient reporting.
+This project implements an **end-to-end ETL pipeline** for processing health indicators associated with diabetes using the **BRFSS 2015 (Behavioral Risk Factor Surveillance System)** dataset.
 
-### Project Objectives
+The solution extracts raw healthcare data, applies data quality validations and transformations, and loads the results into a **dimensional data warehouse (Star Schema)** optimized for analytical queries, reporting, and business intelligence workloads.
 
-* **Extraction** of raw data from BRFSS 2015
-* **Transformation** and cleaning of data with robust validations
-* **Dimensional modeling** to optimize analytical queries
-* **Loading** into a MySQL database with a star schema
-* **Correlation analysis** between health-related variables
+The project demonstrates practical skills in **Data Engineering, ETL development, dimensional modeling, and relational database design**.
 
-### System Architecture
+---
 
+## Key Features
+
+* Automated ETL pipeline using Python
+* Data cleaning and validation workflows
+* Dimensional modeling with a **Star Schema**
+* MySQL data warehouse implementation
+* Batch loading with transactional integrity
+* Correlation-ready analytical dataset
+* Modular and maintainable project structure
+
+---
+
+## Architecture
+
+```text
+Raw BRFSS CSV
+        │
+        ▼
+Data Extraction
+        │
+        ▼
+Data Cleaning & Validation
+        │
+        ▼
+Dimensional Modeling
+        │
+        ▼
+MySQL Data Warehouse
+        │
+        ▼
+Analytical Queries & Reporting
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   EXTRACTION    │    │  TRANSFORMATION │    │   DIMENSIONAL   │    │     LOADING     │
-│                 │    │                 │    │    MODELING     │    │                 │
-│ • Raw CSV       │───▶│ • Data Cleaning │───▶│ • Star Schema   │───▶│ • MySQL Tables │
-│ • Feature       │    │ • Validation    │    │ • 4 Dimensions  │    │ • Fact Table    │
-│   Selection     │    │ • Mapping       │    │ • 1 Fact Table  │    │ • Indexes       │
-└─────────────────┘    └─────────────────┘    └─────────────────┘    └─────────────────┘
+
+---
+
+## Dimensional Model
+
+The warehouse follows a **Star Schema** design composed of four dimension tables and one fact table.
+
+### Dimension Tables
+
+| Table                    | Description                                                 |
+| ------------------------ | ----------------------------------------------------------- |
+| `dim_demographics`       | Gender, age group, education, and income                    |
+| `dim_lifestyle`          | Smoking habits, physical activity, and dietary indicators   |
+| `dim_medical_conditions` | Blood pressure, cholesterol, and chronic disease indicators |
+| `dim_healthcare_access`  | Insurance coverage and healthcare cost barriers             |
+
+### Fact Table
+
+| Table                 | Description                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `fact_health_records` | Central table containing diabetes-related metrics and foreign keys to all dimensions |
+
+This structure improves **query performance, scalability, and analytical flexibility** compared to a fully normalized transactional model.
+
+---
+
+## Project Structure
+
+```text
+Diabetes-Analytics-Data-Warehouse/
+├── data/
+│   └── raw/
+├── logs/
+├── src/
+│   ├── extraction.py
+│   ├── transform.py
+│   ├── dimensional_etl.py
+│   ├── load.py
+│   └── utils.py
+├── main.py
+├── config.py
+├── requirements.txt
+└── README.md
 ```
 
-### Data Model
+---
 
-**Dimension Tables:**
+## ETL Workflow
 
-* `dim_demographics`: Demographic information (gender, age, education, income)
-* `dim_lifestyle`: Lifestyle factors (smoking, physical activity, diet)
-* `dim_medical_conditions`: Medical conditions (blood pressure, cholesterol, diseases)
-* `dim_healthcare_access`: Healthcare access (coverage, costs)
+### 1. Extraction
 
-**Fact Table:**
+* Load BRFSS 2015 CSV data
+* Select diabetes-related features
+* Validate file availability
+* Support sampling for testing
 
-* `fact_health_records`: Main metrics + foreign keys to dimensions
+### 2. Transformation
 
-## Installation and Setup
+* Remove invalid and missing records
+* Normalize categorical variables
+* Validate numerical ranges
+* Standardize BMI values
+* Apply business rules for diabetes classification
 
-### 1. Prerequisites
+### 3. Dimensional Modeling
+
+* Generate surrogate keys
+* Create dimension tables
+* Map fact records to dimensions
+* Preserve analytical measures in the fact table
+
+### 4. Loading
+
+* Create MySQL schema and indexes
+* Perform batch inserts
+* Validate record counts
+* Execute transactional rollback on failure
+
+---
+
+## Installation
+
+### Requirements
 
 * Python 3.8+
 * MySQL Server 8.0+
 * Git
 
-### 2. Clone the Repository
+### Clone the repository
 
 ```bash
 git clone https://github.com/JuanHoyos329/ODS_3_Diabetes.git
-cd ODS_3_Diabetes
+cd Diabetes-Analytics-Data-Warehouse
 ```
 
-### 3. Install Dependencies
+### Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-⚠️ **Important:**
-If the CSV file is missing after cloning, you must download it manually from this Google Drive link and place it inside `data/raw/`:
+---
 
-👉 [Download CSV](https://drive.google.com/file/d/1arJI0too-0EQAlofRKzm1RUhBnj1aFIR/view?usp=drive_link)
+## Dataset Setup
+
+Download the BRFSS 2015 dataset and place the CSV file inside:
+
+```text
+data/raw/
+```
+
+The download link is available in the project documentation.
 
 ---
 
-### Database Connection Setup
+## Database Configuration
 
-Edit the `config.py` file at the project root:
+Update `config.py` with your MySQL credentials:
 
 ```python
-# MySQL Database Configuration
 DB_CONFIG = {
-    "host": "localhost",        
-    "user": "user",         # CHANGE: Your MySQL username
-    "password": "password",# CHANGE: Your MySQL password
-    "database": "diabetesDB",   
-    "port": 3306,               
+    "host": "localhost",
+    "user": "your_user",
+    "password": "your_password",
+    "database": "diabetesDB",
+    "port": 3306,
 }
 ```
 
-## How to Run the Pipeline
+---
 
-### Full Execution (Recommended)
+## Run the Pipeline
+
+Execute the complete ETL process:
 
 ```bash
 python main.py
 ```
 
-## Project Structure
+The pipeline will:
 
-```
-Proyecto-ETL/
-├── data/                    # Project data
-│   ├── raw/                 # Raw data (CSV file goes here)
-├── logs/                    # Log files
-├── src/                     # Source code
-│   ├── extraction.py        # Data extraction
-│   ├── transform.py         # Data transformation and cleaning
-│   ├── dimensional_etl.py   # Dimensional modeling
-│   ├── load.py              # Database loading
-│   └── utils.py             # Utility functions
-├── main.py                  # Main ETL script
-├── config.py                # Project configurations
-├── requirements.txt         # Python dependencies
-└── README.md
-```
-
-## Detailed Data Flow
-
-### 1. Extraction (`extraction.py`)
-
-* Loads the BRFSS 2015 CSV file
-* Selects 22 features relevant to diabetes
-* Handles file-not-found errors
-* Supports test sampling
-
-### 2. Transformation (`transform.py`)
-
-* **Cleaning**: Removes missing values and outliers
-* **Variable Mapping**:
-
-  * DIABETE3: 1 → "Diabetic", 2 → "Healthy", 3 → "Prediabetic"
-  * Binary variables: 1 → "Yes", 2 → "No"
-  * SEX: 1 → "Male", 2 → "Female"
-* **Validation**: Ensures valid ranges
-* **Normalization**: Adjusts BMI (divided by 100)
-
-### 3. Dimensional Modeling (`dimensional_etl.py`)
-
-* **Normalization**: Extracts unique combinations into dimensions
-* **Denormalization**: Keeps metrics in fact table
-* **Primary Keys**: Auto-generates IDs
-* **Reference Mapping**: Connects facts to dimensions
-
-### 4. Loading (`load.py`)
-
-* **Schema Creation**: Optimized tables with indexes
-* **Batch Insertion**: Efficient loading for large volumes
-* **Validation**: Checks record counts
-* **Error Handling**: Rollback on failure
+1. Extract the raw dataset
+2. Clean and validate the data
+3. Build the dimensional model
+4. Load the warehouse into MySQL
+5. Validate the final load
 
 ---
 
-*Last updated: September 2025*
+## Technology Stack
+
+| Category             | Technologies           |
+| -------------------- | ---------------------- |
+| Programming Language | Python                 |
+| Data Processing      | Pandas, NumPy          |
+| Database             | MySQL 8                |
+| ETL                  | Custom Python Pipeline |
+| Modeling             | Star Schema            |
+| Version Control      | Git                    |
+
+---
+
+## Engineering Highlights
+
+* **Dimensional Modeling:** Designed a scalable Star Schema for healthcare analytics.
+* **Data Quality:** Implemented validation rules for categorical mappings and numerical ranges.
+* **Batch Processing:** Optimized loading operations using transactional batch inserts.
+* **Modular Design:** Separated extraction, transformation, modeling, and loading responsibilities into independent modules.
+
+---
+
+## Potential Improvements
+
+* Add **Apache Airflow** orchestration.
+* Containerize the pipeline with **Docker Compose**.
+* Include automated **data quality reports**.
+* Expose warehouse metrics through a **BI dashboard** (Power BI or Streamlit).
+* Add **unit tests** for ETL transformations.
+
+---
+
+## Author
+
+**Juan Andrés Hoyos Rodríguez**
+
+Data Engineering & Artificial Intelligence
+
+2025
